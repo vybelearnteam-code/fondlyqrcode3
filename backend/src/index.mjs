@@ -13,7 +13,21 @@ const projectRoot = path.join(backendRoot, '..');
 
 const PORT = Number(process.env.PORT) || 3001;
 const MONGODB_URI = process.env.MONGODB_URI;
-const DB_NAME = process.env.MONGODB_DB_NAME || 'fondly';
+
+function resolveDbName() {
+  const envDb = (process.env.MONGODB_DB_NAME || '').trim();
+  if (envDb) return envDb;
+  try {
+    if (!MONGODB_URI) return 'fondly';
+    const parsed = new URL(MONGODB_URI);
+    const dbFromPath = parsed.pathname.replace(/^\//, '').trim();
+    return dbFromPath || 'fondly';
+  } catch {
+    return 'fondly';
+  }
+}
+
+const DB_NAME = resolveDbName();
 
 if (!MONGODB_URI) {
   console.error('Missing MONGODB_URI in environment (.env)');
@@ -37,6 +51,20 @@ async function getDb() {
 
 function iso(d) {
   return d instanceof Date ? d.toISOString() : new Date(d).toISOString();
+}
+
+function readCampaignCouponCodes() {
+  const candidateFiles = [
+    path.join(projectRoot, 'frontend', 'data', 'custom_coupon_lines.txt'),
+    path.join(projectRoot, 'data', 'custom_coupon_lines.txt'),
+  ];
+  const target = candidateFiles.find((p) => fs.existsSync(p));
+  if (!target) return [];
+  return fs
+    .readFileSync(target, 'utf8')
+    .split(/\r?\n/)
+    .map((line) => line.trim().toUpperCase())
+    .filter(Boolean);
 }
 
 async function ensureIndexes(db) {
@@ -87,6 +115,61 @@ async function ensureSeed(db) {
       })),
     );
   }
+
+  // Keep reward image URLs populated with spice-themed product photos.
+  // These are stable public image links (easy to find via Google Images).
+  const spiceImagesByOrder = new Map([
+    [1, 'https://upload.wikimedia.org/wikipedia/commons/4/4c/Black_cardamom.jpg'],
+    [2, 'https://upload.wikimedia.org/wikipedia/commons/1/1c/Turmeric_powder.jpg'],
+    [3, 'https://upload.wikimedia.org/wikipedia/commons/4/48/Cinnamon_sticks.jpg'],
+    [4, 'https://upload.wikimedia.org/wikipedia/commons/0/0f/ClovesDried.jpg'],
+    [5, 'https://upload.wikimedia.org/wikipedia/commons/8/89/Black_peppercorns.jpg'],
+    [6, 'https://upload.wikimedia.org/wikipedia/commons/d/d3/Coriander_seeds.jpg'],
+    [7, 'https://upload.wikimedia.org/wikipedia/commons/3/32/Cumin_seeds_1.jpg'],
+    [8, 'https://upload.wikimedia.org/wikipedia/commons/1/12/Fennel_seeds.jpg'],
+  ]);
+  const allRewards = await rewardsColl.find({}).project({ id: 1, sort_order: 1 }).toArray();
+  const nowIso = new Date().toISOString();
+  const updates = allRewards
+    .map((r) => {
+      const imageUrl = spiceImagesByOrder.get(r.sort_order);
+      if (!imageUrl) return null;
+      return {
+        updateOne: {
+          filter: { id: r.id },
+          update: { $set: { image_url: imageUrl, updated_at: nowIso } },
+        },
+      };
+    })
+    .filter(Boolean);
+  if (updates.length) {
+    await rewardsColl.bulkWrite(updates, { ordered: false });
+  }
+}
+
+async function activateCampaignCoupons(db) {
+  const couponCodes = readCampaignCouponCodes();
+  if (!couponCodes.length) return;
+
+  const now = new Date();
+  const ops = couponCodes.map((code) => ({
+    updateOne: {
+      filter: { code },
+      update: {
+        $set: {
+          code,
+          used: false,
+          used_at: null,
+        },
+        $setOnInsert: {
+          id: randomUUID(),
+          created_at: now,
+        },
+      },
+      upsert: true,
+    },
+  }));
+  await db.collection('coupon_codes').bulkWrite(ops, { ordered: false });
 }
 
 function parseBool(v) {
@@ -528,6 +611,7 @@ async function main() {
   const db = await getDb();
   await ensureIndexes(db);
   await ensureSeed(db);
+  await activateCampaignCoupons(db);
   app.listen(PORT, () => {
     console.log(`API listening on http://localhost:${PORT} (database: ${DB_NAME})`);
   });
