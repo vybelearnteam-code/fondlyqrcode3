@@ -30,7 +30,9 @@ function resolveDbName() {
 const DB_NAME = resolveDbName();
 
 if (!MONGODB_URI) {
-  console.error('Missing MONGODB_URI in environment (.env)');
+  console.error(
+    'Missing MONGODB_URI. For production (e.g. Render), add MONGODB_URI in the service Environment tab. For local dev, set it in backend/.env (see backend/.env.example).',
+  );
   process.exit(1);
 }
 
@@ -608,16 +610,24 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 async function main() {
+  console.log(`Connecting to MongoDB (db name: ${DB_NAME})…`);
   const db = await getDb();
+  console.log('Ensuring indexes…');
   await ensureIndexes(db);
+  console.log('Ensuring seed data…');
   await ensureSeed(db);
+  console.log('Activating campaign coupons (if configured)…');
   await activateCampaignCoupons(db);
-  app.listen(PORT, () => {
-    console.log(`API listening on http://localhost:${PORT} (database: ${DB_NAME})`);
+  const host = '0.0.0.0';
+  app.listen(PORT, host, () => {
+    console.log(`API listening on http://${host}:${PORT} (database: ${DB_NAME})`);
   });
 }
 
 main().catch((e) => {
-  console.error(e);
+  const msg = e instanceof Error ? e.message : String(e);
+  console.error('Startup failed:', msg);
+  if (e instanceof Error && e.stack) console.error(e.stack);
+  else console.error(e);
   process.exit(1);
 });
