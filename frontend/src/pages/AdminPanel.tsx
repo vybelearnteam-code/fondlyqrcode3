@@ -23,7 +23,11 @@ import { Download, LogOut, RefreshCw, Users, Gift, Settings, Ticket } from 'luci
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { SHOP_COUPON_SEED } from '@/data/shopCouponSeed';
-import { SAMPLE_WHEEL_IMAGE_URL } from '@/lib/sampleAssets';
+import {
+  normalizeWheelImageUrl,
+  SAMPLE_WHEEL_IMAGE_SHARE_URL,
+  SAMPLE_WHEEL_IMAGE_URL,
+} from '@/lib/sampleAssets';
 
 type Reward = {
   id: string;
@@ -489,7 +493,10 @@ const AdminPanel = () => {
                           defaultValue={r.image_url || ''}
                           placeholder={SAMPLE_WHEEL_IMAGE_URL}
                           title="Paste a direct HTTPS image URL for this wheel slice."
-                          onBlur={(e) => updateRewardRow(r.id, { image_url: e.target.value || null })}
+                          onBlur={(e) => {
+                            const normalized = normalizeWheelImageUrl(e.target.value || '');
+                            updateRewardRow(r.id, { image_url: normalized || null });
+                          }}
                         />
                         <p className="text-[10px] text-muted-foreground break-all leading-snug">
                           Sample:{' '}
@@ -497,7 +504,7 @@ const AdminPanel = () => {
                             type="button"
                             className="text-gold/90 underline-offset-2 hover:underline font-mono text-left"
                             onClick={() => {
-                              void navigator.clipboard.writeText(SAMPLE_WHEEL_IMAGE_URL).then(
+                              void navigator.clipboard.writeText(SAMPLE_WHEEL_IMAGE_SHARE_URL).then(
                                 () => toast.success('Sample image URL copied.'),
                                 () => toast.error('Could not copy.'),
                               );

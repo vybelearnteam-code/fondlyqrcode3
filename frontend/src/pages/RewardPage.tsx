@@ -1,15 +1,16 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useCampaign } from '@/context/CampaignContext';
 import GoldButton from '@/components/GoldButton';
 import { Gift, Sparkles } from 'lucide-react';
-import { stripPercentMarketingTitle } from '@/lib/sampleAssets';
+import { normalizeWheelImageUrl, stripPercentMarketingTitle } from '@/lib/sampleAssets';
 
 const UNLOCK_LABEL = "You've unlocked";
 
 const RewardPage = () => {
   const { spinResult, setStep } = useCampaign();
   const reduceMotion = useReducedMotion();
+  const [imageBroken, setImageBroken] = useState(false);
 
   const sparkles = useMemo(
     () =>
@@ -120,10 +121,11 @@ const RewardPage = () => {
             />
           )}
           <div className="w-28 h-28 rounded-full border border-gold/35 bg-gradient-to-b from-secondary/90 to-background flex items-center justify-center shadow-[0_0_48px_hsl(38_45%_60%/0.15)] overflow-hidden">
-            {spinResult.image ? (
+            {spinResult.image && !imageBroken ? (
               <motion.img
-                src={spinResult.image}
+                src={normalizeWheelImageUrl(spinResult.image)}
                 alt=""
+                onError={() => setImageBroken(true)}
                 initial={{ scale: 0.6, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ delay: 0.15, type: 'spring', stiffness: 280, damping: 18 }}

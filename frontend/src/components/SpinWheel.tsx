@@ -6,7 +6,7 @@ import { useCampaign } from '@/context/CampaignContext';
 import type { Reward } from '@/context/CampaignContext';
 import { normalizeCouponInput } from '@/lib/couponCodes';
 import { ApiError, completeSpin, lookupCoupon } from '@/lib/api';
-import { stripPercentMarketingTitle } from '@/lib/sampleAssets';
+import { normalizeWheelImageUrl, stripPercentMarketingTitle } from '@/lib/sampleAssets';
 
 /** Effective weight = admin probability × remaining stock (both shape the wheel and the RNG). */
 function rewardSpinWeight(r: Reward): number {
@@ -66,6 +66,7 @@ const SpinWheel: React.FC = () => {
   const { rewards, userData, setSpinResult, setHasSpun, setStep, setSubmissionId } = useCampaign();
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
+  const [brokenImages, setBrokenImages] = useState<Record<string, true>>({});
   const wheelRef = useRef<HTMLDivElement>(null);
 
   const activeRewards = useMemo(
@@ -241,10 +242,11 @@ const SpinWheel: React.FC = () => {
                           userSelect: 'none',
                         }}
                       >
-                        {reward.image ? (
+                        {reward.image && !brokenImages[reward.id] ? (
                           <img
-                            src={reward.image}
+                            src={normalizeWheelImageUrl(reward.image)}
                             alt=""
+                            onError={() => setBrokenImages((prev) => ({ ...prev, [reward.id]: true }))}
                             style={{
                               width: 28,
                               height: 28,
