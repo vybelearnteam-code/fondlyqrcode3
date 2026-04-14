@@ -348,13 +348,15 @@ const AdminPanel = () => {
     };
   }, [adminTab, loading]);
 
-  const updateRewardRow = async (id: string, updates: Partial<Reward>) => {
+  const updateRewardRow = async (id: string, updates: Partial<Reward>): Promise<boolean> => {
     try {
       await updateReward(id, updates as Record<string, string | number | boolean | null>);
       toast.success('Updated');
       fetchAll();
+      return true;
     } catch {
       toast.error('Failed to update');
+      return false;
     }
   };
 
@@ -375,8 +377,8 @@ const AdminPanel = () => {
       toast.error('Please choose an image file.');
       return;
     }
-    if (file.size > 3 * 1024 * 1024) {
-      toast.error('Image too large. Use a file under 3 MB.');
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Image too large. Use a file under 2 MB.');
       return;
     }
 
@@ -389,8 +391,8 @@ const AdminPanel = () => {
         reader.readAsDataURL(file);
       });
       if (!dataUrl) throw new Error('Image read failed');
-      await updateRewardRow(rewardId, { image_url: dataUrl });
-      toast.success('Reward image uploaded.');
+      const ok = await updateRewardRow(rewardId, { image_url: dataUrl });
+      if (ok) toast.success('Reward image uploaded.');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Image upload failed');
     } finally {

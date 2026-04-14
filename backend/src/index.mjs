@@ -41,7 +41,8 @@ if (!MONGODB_URI) {
 
 const app = express();
 app.use(cors({ origin: true }));
-app.use(express.json({ limit: '2mb' }));
+// Reward image uploads use base64 data URLs, so keep JSON payload limit above default.
+app.use(express.json({ limit: '10mb' }));
 
 /** @type {MongoClient | null} */
 let client = null;
