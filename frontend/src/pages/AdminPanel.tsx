@@ -87,6 +87,7 @@ const AdminPanel = () => {
   const [addCouponsBusy, setAddCouponsBusy] = useState(false);
   const [removeLegacyBusy, setRemoveLegacyBusy] = useState(false);
   const [purgeFndBusy, setPurgeFndBusy] = useState(false);
+  const [imageUploadBusyByReward, setImageUploadBusyByReward] = useState<Record<string, boolean>>({});
   const [adminTab, setAdminTab] = useState('rewards');
 
   useEffect(() => {
@@ -373,6 +374,35 @@ const AdminPanel = () => {
     }
   };
 
+  const uploadRewardImage = async (rewardId: string, file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file.');
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      toast.error('Image too large. Use a file under 3 MB.');
+      return;
+    }
+
+    setImageUploadBusyByReward((prev) => ({ ...prev, [rewardId]: true }));
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Could not read image file'));
+        reader.readAsDataURL(file);
+      });
+      if (!dataUrl) throw new Error('Image read failed');
+      await updateRewardRow(rewardId, { image_url: dataUrl });
+      toast.success('Reward image uploaded.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Image upload failed');
+    } finally {
+      setImageUploadBusyByReward((prev) => ({ ...prev, [rewardId]: false }));
+    }
+  };
+
   const exportCSV = () => {
     const headers = ['Name', 'Phone', 'Coupon', 'PIN', 'Verified', 'Reward', 'Address', 'City', 'Source', 'Date'];
     const rows = submissions.map(s => [
@@ -513,6 +543,23 @@ const AdminPanel = () => {
                             Copy sample URL
                           </button>
                         </p>
+                        <div className="pt-1 space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">Or upload from device</Label>
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            className="text-xs"
+                            disabled={Boolean(imageUploadBusyByReward[r.id])}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0] || null;
+                              void uploadRewardImage(r.id, f);
+                              e.currentTarget.value = '';
+                            }}
+                          />
+                          {imageUploadBusyByReward[r.id] ? (
+                            <p className="text-[10px] text-muted-foreground">Uploading image…</p>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="flex flex-wrap items-end gap-4">
                         <div className="space-y-1">
