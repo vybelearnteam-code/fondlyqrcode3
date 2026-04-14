@@ -8,7 +8,6 @@ import { normalizeCouponInput } from '@/lib/couponCodes';
 import { ApiError, completeSpin, lookupCoupon } from '@/lib/api';
 import {
   normalizeWheelImageUrl,
-  SAMPLE_WHEEL_IMAGE_URL,
   stripPercentMarketingTitle,
 } from '@/lib/sampleAssets';
 
@@ -112,7 +111,6 @@ const SpinWheel: React.FC = () => {
 
   const wheelSize = 320;
   const radius = wheelSize / 2;
-  const sharedModelImageUrl = normalizeWheelImageUrl(SAMPLE_WHEEL_IMAGE_URL);
 
   return (
     <div className="flex flex-col items-center gap-10">
@@ -192,7 +190,6 @@ const SpinWheel: React.FC = () => {
                       transform={`rotate(${labelRotation}, ${textX}, ${textY})`}
                     >
                       <div
-                        xmlns="http://www.w3.org/1999/xhtml"
                         style={{
                           width: '100%',
                           height: '100%',
@@ -205,9 +202,9 @@ const SpinWheel: React.FC = () => {
                           userSelect: 'none',
                         }}
                       >
-                        {!brokenImages[reward.id] ? (
+                        {reward.image && !brokenImages[reward.id] ? (
                           <img
-                            src={sharedModelImageUrl}
+                            src={normalizeWheelImageUrl(reward.image)}
                             alt=""
                             onError={() => setBrokenImages((prev) => ({ ...prev, [reward.id]: true }))}
                             style={{

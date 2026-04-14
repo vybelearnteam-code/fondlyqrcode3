@@ -125,35 +125,7 @@ async function ensureSeed(db) {
     );
   }
 
-  // Default wheel segment image (round ~28px in UI). Fills empty rows or legacy Wikimedia URLs.
-  const sampleWheelImage =
-    'https://drive.google.com/uc?export=view&id=1CTWgVfuoyOCnBlm6KfAcHXHqZFhvWXhk';
-  const wheelImageByOrder = new Map([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [n, sampleWheelImage]));
-
-  const allRewards = await rewardsColl.find({}).project({ id: 1, sort_order: 1 }).toArray();
   const nowIso = new Date().toISOString();
-  const updates = allRewards
-    .map((r) => {
-      const imageUrl = wheelImageByOrder.get(r.sort_order);
-      if (!imageUrl) return null;
-      return {
-        updateOne: {
-          filter: {
-            id: r.id,
-            $or: [
-              { image_url: null },
-              { image_url: '' },
-              { image_url: { $regex: '^https://upload\\.wikimedia\\.org/', $options: 'i' } },
-            ],
-          },
-          update: { $set: { image_url: imageUrl, updated_at: nowIso } },
-        },
-      };
-    })
-    .filter(Boolean);
-  if (updates.length) {
-    await rewardsColl.bulkWrite(updates, { ordered: false });
-  }
 
   await rewardsColl.updateMany(
     { title: '20% Founder Offer' },

@@ -23,11 +23,6 @@ import { Download, LogOut, RefreshCw, Users, Gift, Settings, Ticket } from 'luci
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { SHOP_COUPON_SEED } from '@/data/shopCouponSeed';
-import {
-  normalizeWheelImageUrl,
-  SAMPLE_WHEEL_IMAGE_SHARE_URL,
-  SAMPLE_WHEEL_IMAGE_URL,
-} from '@/lib/sampleAssets';
 
 type Reward = {
   id: string;
@@ -403,6 +398,18 @@ const AdminPanel = () => {
     }
   };
 
+  const removeRewardImage = async (rewardId: string) => {
+    setImageUploadBusyByReward((prev) => ({ ...prev, [rewardId]: true }));
+    try {
+      await updateRewardRow(rewardId, { image_url: null });
+      toast.success('Reward image removed.');
+    } catch {
+      toast.error('Could not remove image');
+    } finally {
+      setImageUploadBusyByReward((prev) => ({ ...prev, [rewardId]: false }));
+    }
+  };
+
   const exportCSV = () => {
     const headers = ['Name', 'Phone', 'Coupon', 'PIN', 'Verified', 'Reward', 'Address', 'City', 'Source', 'Date'];
     const rows = submissions.map(s => [
@@ -516,39 +523,21 @@ const AdminPanel = () => {
                       </div>
                     </div>
                     <div className="grid sm:grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Wheel image URL (round ~28px)</Label>
-                        <Input
-                          className="text-xs font-mono"
-                          defaultValue={r.image_url || ''}
-                          placeholder={SAMPLE_WHEEL_IMAGE_URL}
-                          title="Paste a direct HTTPS image URL for this wheel slice."
-                          onBlur={(e) => {
-                            const normalized = normalizeWheelImageUrl(e.target.value || '');
-                            updateRewardRow(r.id, { image_url: normalized || null });
-                          }}
-                        />
-                        <p className="text-[10px] text-muted-foreground break-all leading-snug">
-                          Sample:{' '}
-                          <button
-                            type="button"
-                            className="text-gold/90 underline-offset-2 hover:underline font-mono text-left"
-                            onClick={() => {
-                              void navigator.clipboard.writeText(SAMPLE_WHEEL_IMAGE_SHARE_URL).then(
-                                () => toast.success('Sample image URL copied.'),
-                                () => toast.error('Could not copy.'),
-                              );
-                            }}
-                          >
-                            Copy sample URL
-                          </button>
-                        </p>
-                        <div className="pt-1 space-y-1">
-                          <Label className="text-[11px] text-muted-foreground">Or upload from device</Label>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">Reward image (upload from device)</Label>
+                        {r.image_url ? (
+                          <div className="flex items-center gap-3">
+                            <img src={r.image_url} alt="" className="w-11 h-11 rounded-full object-cover border border-border" />
+                            <span className="text-[11px] text-muted-foreground">Image uploaded</span>
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-muted-foreground">No image uploaded. Spin wheel will show gift icon.</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-2">
                           <Input
                             type="file"
                             accept="image/*"
-                            className="text-xs"
+                            className="text-xs max-w-[260px]"
                             disabled={Boolean(imageUploadBusyByReward[r.id])}
                             onChange={(e) => {
                               const f = e.target.files?.[0] || null;
@@ -556,10 +545,19 @@ const AdminPanel = () => {
                               e.currentTarget.value = '';
                             }}
                           />
-                          {imageUploadBusyByReward[r.id] ? (
-                            <p className="text-[10px] text-muted-foreground">Uploading image…</p>
-                          ) : null}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!r.image_url || Boolean(imageUploadBusyByReward[r.id])}
+                            onClick={() => void removeRewardImage(r.id)}
+                          >
+                            Delete image
+                          </Button>
                         </div>
+                        {imageUploadBusyByReward[r.id] ? (
+                          <p className="text-[10px] text-muted-foreground">Saving image…</p>
+                        ) : null}
                       </div>
                       <div className="flex flex-wrap items-end gap-4">
                         <div className="space-y-1">
