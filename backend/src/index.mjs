@@ -28,6 +28,9 @@ function resolveDbName() {
 }
 
 const DB_NAME = resolveDbName();
+const COUPON_VALID_UNTIL_ISO = '2026-04-19T01:00:00+05:30';
+const COUPON_VALID_UNTIL = new Date(COUPON_VALID_UNTIL_ISO);
+const COUPON_EXPIRED_MESSAGE = 'Coupon validity ended on 19-04-2026, 01:00 AM.';
 
 if (!MONGODB_URI) {
   console.error(
@@ -53,6 +56,10 @@ async function getDb() {
 
 function iso(d) {
   return d instanceof Date ? d.toISOString() : new Date(d).toISOString();
+}
+
+function couponsExpired() {
+  return Date.now() > COUPON_VALID_UNTIL.getTime();
 }
 
 function readCampaignCouponCodes() {
@@ -309,6 +316,7 @@ app.patch('/api/campaign-settings/:id', async (req, res) => {
 
 app.get('/api/coupons/:code', async (req, res) => {
   try {
+    if (couponsExpired()) return res.status(410).json({ error: COUPON_EXPIRED_MESSAGE });
     const code = String(req.params.code || '')
       .trim()
       .toUpperCase();
@@ -558,6 +566,9 @@ app.patch('/api/user-submissions/:id', async (req, res) => {
 });
 
 app.post('/api/spin/complete', async (req, res) => {
+  if (couponsExpired()) {
+    return res.status(410).json({ error: COUPON_EXPIRED_MESSAGE });
+  }
   const phone = String(req.body?.phone || '').replace(/\D/g, '');
   const couponCode = String(req.body?.couponCode || '')
     .trim()

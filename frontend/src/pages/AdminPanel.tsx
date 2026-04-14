@@ -563,12 +563,12 @@ const AdminPanel = () => {
                       </div>
                       <div className="flex flex-wrap items-end gap-4">
                         <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Spin weight</Label>
+                          <Label className="text-xs text-muted-foreground">Possibility %</Label>
                           <Input
                             type="number"
                             className="w-24"
                             defaultValue={r.probability}
-                            title="Relative odds with stock; larger means more likely."
+                            title="Spin chance percentage. Higher value means more likely."
                             onBlur={(e) => updateRewardRow(r.id, { probability: parseInt(e.target.value, 10) || 0 })}
                           />
                         </div>

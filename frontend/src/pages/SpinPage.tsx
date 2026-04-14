@@ -44,6 +44,14 @@ const SpinPage = () => {
         {' · '}
         +91 {userData.phone || '—'}
       </motion.p>
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.82, duration: 0.8 }}
+        className="text-[11px] text-amber-200/80 font-sans text-center max-w-sm -mt-7 mb-8"
+      >
+        Coupon validity: up to 19-04-2026, 01:00 AM
+      </motion.p>
 
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
