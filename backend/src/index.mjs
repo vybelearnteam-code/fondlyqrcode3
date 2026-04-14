@@ -31,6 +31,7 @@ const DB_NAME = resolveDbName();
 const COUPON_VALID_UNTIL_ISO = '2026-04-19T01:00:00+05:30';
 const COUPON_VALID_UNTIL = new Date(COUPON_VALID_UNTIL_ISO);
 const COUPON_EXPIRED_MESSAGE = 'Coupon validity ended on 19-04-2026, 01:00 AM.';
+const DEFAULT_WHEEL_IMAGE_SIZE = 28;
 
 if (!MONGODB_URI) {
   console.error(
@@ -59,8 +60,15 @@ function iso(d) {
   return d instanceof Date ? d.toISOString() : new Date(d).toISOString();
 }
 
-function couponsExpired() {
-  return Date.now() > COUPON_VALID_UNTIL.getTime();
+async function getCouponPolicy(db) {
+  const settings = await db.collection('campaign_settings').findOne({});
+  const rawUntil = settings?.coupon_valid_until;
+  const until = rawUntil ? new Date(rawUntil) : COUPON_VALID_UNTIL;
+  const message =
+    typeof settings?.coupon_validity_text === 'string' && settings.coupon_validity_text.trim()
+      ? settings.coupon_validity_text.trim()
+      : COUPON_EXPIRED_MESSAGE;
+  return { until, message };
 }
 
 function readCampaignCouponCodes() {
@@ -91,6 +99,9 @@ async function ensureSeed(db) {
       spin_enabled: true,
       whatsapp_number: '919999999999',
       whatsapp_message: 'Hi, I received the Fondly reward.',
+      coupon_valid_until: COUPON_VALID_UNTIL,
+      coupon_validity_text: COUPON_EXPIRED_MESSAGE,
+      wheel_image_size: DEFAULT_WHEEL_IMAGE_SIZE,
       updated_at: new Date().toISOString(),
     });
   }
@@ -264,6 +275,12 @@ app.get('/api/campaign-settings', async (_req, res) => {
       whatsapp_number: row.whatsapp_number ?? null,
       whatsapp_message: row.whatsapp_message ?? null,
       coupon_inventory_saved_at: row.coupon_inventory_saved_at ? iso(row.coupon_inventory_saved_at) : null,
+      coupon_valid_until: row.coupon_valid_until ? iso(row.coupon_valid_until) : COUPON_VALID_UNTIL_ISO,
+      coupon_validity_text: row.coupon_validity_text ?? COUPON_EXPIRED_MESSAGE,
+      wheel_image_size:
+        typeof row.wheel_image_size === 'number' && Number.isFinite(row.wheel_image_size)
+          ? row.wheel_image_size
+          : DEFAULT_WHEEL_IMAGE_SIZE,
     });
   } catch (e) {
     console.error(e);
@@ -278,6 +295,22 @@ app.patch('/api/campaign-settings/:id', async (req, res) => {
     if ('spin_enabled' in req.body) $set.spin_enabled = parseBool(req.body.spin_enabled);
     if ('whatsapp_number' in req.body) $set.whatsapp_number = req.body.whatsapp_number;
     if ('whatsapp_message' in req.body) $set.whatsapp_message = req.body.whatsapp_message;
+    if ('coupon_validity_text' in req.body) $set.coupon_validity_text = req.body.coupon_validity_text;
+    if ('coupon_valid_until' in req.body) {
+      const raw = req.body.coupon_valid_until;
+      const dt = raw ? new Date(raw) : null;
+      if (dt && Number.isNaN(dt.getTime())) {
+        return res.status(400).json({ error: 'Invalid coupon_valid_until datetime.' });
+      }
+      $set.coupon_valid_until = dt;
+    }
+    if ('wheel_image_size' in req.body) {
+      const n = Number(req.body.wheel_image_size);
+      if (!Number.isFinite(n) || n < 12 || n > 96) {
+        return res.status(400).json({ error: 'wheel_image_size must be a number between 12 and 96.' });
+      }
+      $set.wheel_image_size = Math.round(n);
+    }
     const r = await db.collection('campaign_settings').updateOne({ id: req.params.id }, { $set });
     if (r.matchedCount === 0) return res.status(404).json({ error: 'Not found' });
     res.json({ ok: true });
@@ -289,12 +322,13 @@ app.patch('/api/campaign-settings/:id', async (req, res) => {
 
 app.get('/api/coupons/:code', async (req, res) => {
   try {
-    if (couponsExpired()) return res.status(410).json({ error: COUPON_EXPIRED_MESSAGE });
+    const db = await getDb();
+    const policy = await getCouponPolicy(db);
+    if (Date.now() > policy.until.getTime()) return res.status(410).json({ error: policy.message });
     const code = String(req.params.code || '')
       .trim()
       .toUpperCase();
     if (!code) return res.status(400).json({ error: 'Invalid code' });
-    const db = await getDb();
     const row = await db.collection('coupon_codes').findOne({ code });
     if (!row) return res.status(404).json({ error: 'Invalid coupon code.' });
     res.json({ code: row.code, used: Boolean(row.used) });
@@ -539,8 +573,10 @@ app.patch('/api/user-submissions/:id', async (req, res) => {
 });
 
 app.post('/api/spin/complete', async (req, res) => {
-  if (couponsExpired()) {
-    return res.status(410).json({ error: COUPON_EXPIRED_MESSAGE });
+  const db = await getDb();
+  const policy = await getCouponPolicy(db);
+  if (Date.now() > policy.until.getTime()) {
+    return res.status(410).json({ error: policy.message });
   }
   const phone = String(req.body?.phone || '').replace(/\D/g, '');
   const couponCode = String(req.body?.couponCode || '')
@@ -554,7 +590,6 @@ app.post('/api/spin/complete', async (req, res) => {
   }
 
   try {
-    const db = await getDb();
     const mongo = /** @type {MongoClient} */ (client);
     const session = mongo.startSession();
     const submissionId = randomUUID();

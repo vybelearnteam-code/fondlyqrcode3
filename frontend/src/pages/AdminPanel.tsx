@@ -66,6 +66,18 @@ type CampaignSettings = {
   whatsapp_number: string | null;
   whatsapp_message: string | null;
   coupon_inventory_saved_at: string | null;
+  coupon_valid_until: string | null;
+  coupon_validity_text: string | null;
+  wheel_image_size: number | null;
+};
+
+type CampaignSettingsDraft = {
+  spin_enabled: boolean;
+  whatsapp_number: string;
+  whatsapp_message: string;
+  coupon_validity_text: string;
+  coupon_valid_until_local: string;
+  wheel_image_size: string;
 };
 
 const AdminPanel = () => {
@@ -83,6 +95,15 @@ const AdminPanel = () => {
   const [removeLegacyBusy, setRemoveLegacyBusy] = useState(false);
   const [purgeFndBusy, setPurgeFndBusy] = useState(false);
   const [imageUploadBusyByReward, setImageUploadBusyByReward] = useState<Record<string, boolean>>({});
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState<CampaignSettingsDraft>({
+    spin_enabled: true,
+    whatsapp_number: '',
+    whatsapp_message: '',
+    coupon_validity_text: 'Coupon validity ended on 19-04-2026, 01:00 AM.',
+    coupon_valid_until_local: '',
+    wheel_image_size: '28',
+  });
   const [adminTab, setAdminTab] = useState('rewards');
 
   useEffect(() => {
@@ -134,7 +155,18 @@ const AdminPanel = () => {
       ]);
       setRewards(r as Reward[]);
       setSubmissions(s as Submission[]);
-      setSettings(c as CampaignSettings);
+      const cs = c as CampaignSettings;
+      setSettings(cs);
+      setSettingsDraft({
+        spin_enabled: cs.spin_enabled ?? true,
+        whatsapp_number: cs.whatsapp_number || '',
+        whatsapp_message: cs.whatsapp_message || '',
+        coupon_validity_text: cs.coupon_validity_text || 'Coupon validity ended on 19-04-2026, 01:00 AM.',
+        coupon_valid_until_local: cs.coupon_valid_until
+          ? new Date(cs.coupon_valid_until).toISOString().slice(0, 16)
+          : '',
+        wheel_image_size: String(cs.wheel_image_size ?? 28),
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not load campaign data. Is the API server running?');
       setLoading(false);
@@ -360,14 +392,28 @@ const AdminPanel = () => {
     }
   };
 
-  const updateSettings = async (updates: Partial<CampaignSettings>) => {
+  const updateSettings = async () => {
     if (!settings) return;
+    const wheelSize = parseInt(settingsDraft.wheel_image_size, 10) || 28;
+    const updates: Record<string, string | number | boolean | null> = {
+      spin_enabled: settingsDraft.spin_enabled,
+      whatsapp_number: settingsDraft.whatsapp_number || null,
+      whatsapp_message: settingsDraft.whatsapp_message || null,
+      coupon_validity_text: settingsDraft.coupon_validity_text || null,
+      coupon_valid_until: settingsDraft.coupon_valid_until_local
+        ? new Date(settingsDraft.coupon_valid_until_local).toISOString()
+        : null,
+      wheel_image_size: Math.max(12, Math.min(96, wheelSize)),
+    };
+    setSavingSettings(true);
     try {
-      await updateCampaignSettings(settings.id, updates as Record<string, string | boolean | null>);
+      await updateCampaignSettings(settings.id, updates);
       toast.success('Settings updated');
-      fetchAll();
+      await fetchAll();
     } catch {
       toast.error('Failed to update');
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -838,17 +884,57 @@ const AdminPanel = () => {
               <CardContent className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div><p className="font-medium">Spin wheel</p><p className="text-xs text-muted-foreground">Enable or disable the spin globally</p></div>
-                  <Switch checked={settings?.spin_enabled ?? true} onCheckedChange={(val) => updateSettings({ spin_enabled: val })} />
+                  <Switch
+                    checked={settingsDraft.spin_enabled}
+                    onCheckedChange={(val) => setSettingsDraft((prev) => ({ ...prev, spin_enabled: val }))}
+                  />
                 </div>
                 <div className="space-y-2">
                   <p className="font-medium text-sm">WhatsApp number</p>
-                  <Input defaultValue={settings?.whatsapp_number || ''} placeholder="919999999999"
-                    onBlur={(e) => updateSettings({ whatsapp_number: e.target.value })} />
+                  <Input
+                    value={settingsDraft.whatsapp_number}
+                    placeholder="919999999999"
+                    onChange={(e) => setSettingsDraft((prev) => ({ ...prev, whatsapp_number: e.target.value }))}
+                  />
                 </div>
                 <div className="space-y-2">
                   <p className="font-medium text-sm">WhatsApp message</p>
-                  <Input defaultValue={settings?.whatsapp_message || ''} placeholder="Hi, I received the Fondly reward."
-                    onBlur={(e) => updateSettings({ whatsapp_message: e.target.value })} />
+                  <Input
+                    value={settingsDraft.whatsapp_message}
+                    placeholder="Hi, I received the Fondly reward."
+                    onChange={(e) => setSettingsDraft((prev) => ({ ...prev, whatsapp_message: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <p className="font-medium text-sm">Coupon validity message (spin page + expiry response)</p>
+                  <Input
+                    value={settingsDraft.coupon_validity_text}
+                    placeholder="Coupon validity ended on ..."
+                    onChange={(e) => setSettingsDraft((prev) => ({ ...prev, coupon_validity_text: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <p className="font-medium text-sm">Coupon valid until (date & time)</p>
+                  <Input
+                    type="datetime-local"
+                    value={settingsDraft.coupon_valid_until_local}
+                    onChange={(e) => setSettingsDraft((prev) => ({ ...prev, coupon_valid_until_local: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <p className="font-medium text-sm">Wheel image width / height (px)</p>
+                  <Input
+                    type="number"
+                    min={12}
+                    max={96}
+                    value={settingsDraft.wheel_image_size}
+                    onChange={(e) => setSettingsDraft((prev) => ({ ...prev, wheel_image_size: e.target.value }))}
+                  />
+                </div>
+                <div className="pt-2">
+                  <Button type="button" onClick={() => void updateSettings()} disabled={savingSettings}>
+                    {savingSettings ? 'Saving…' : 'Save settings'}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

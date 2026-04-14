@@ -68,6 +68,9 @@ export async function fetchCampaignSettings() {
     whatsapp_number: string | null;
     whatsapp_message: string | null;
     coupon_inventory_saved_at: string | null;
+    coupon_valid_until: string | null;
+    coupon_validity_text: string | null;
+    wheel_image_size: number | null;
   }>('/api/campaign-settings');
 }
 
@@ -184,7 +187,7 @@ export async function updateReward(id: string, updates: Record<string, string | 
 
 export async function updateCampaignSettings(
   id: string,
-  updates: Record<string, string | boolean | null>,
+  updates: Record<string, string | number | boolean | null>,
 ) {
   return apiJson<{ ok: boolean }>(`/api/campaign-settings/${encodeURIComponent(id)}`, {
     method: 'PATCH',

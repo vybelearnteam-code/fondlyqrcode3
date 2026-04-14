@@ -26,7 +26,7 @@ function pickByPossibility(list: Reward[]): Reward {
 }
 
 const SpinWheel: React.FC = () => {
-  const { rewards, userData, setSpinResult, setHasSpun, setStep, setSubmissionId } = useCampaign();
+  const { rewards, userData, setSpinResult, setHasSpun, setStep, setSubmissionId, wheelImageSize } = useCampaign();
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [brokenImages, setBrokenImages] = useState<Record<string, true>>({});
@@ -208,8 +208,8 @@ const SpinWheel: React.FC = () => {
                             alt=""
                             onError={() => setBrokenImages((prev) => ({ ...prev, [reward.id]: true }))}
                             style={{
-                              width: 28,
-                              height: 28,
+                              width: wheelImageSize,
+                              height: wheelImageSize,
                               borderRadius: '50%',
                               objectFit: 'cover',
                               border: '1px solid hsl(38 45% 35% / 0.6)',
@@ -218,7 +218,7 @@ const SpinWheel: React.FC = () => {
                           />
                         ) : (
                           <Gift
-                            size={26}
+                            size={Math.max(18, wheelImageSize - 2)}
                             strokeWidth={1.35}
                             color="hsl(38, 50%, 78%)"
                             style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}

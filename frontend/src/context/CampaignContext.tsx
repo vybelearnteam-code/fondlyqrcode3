@@ -43,6 +43,9 @@ interface CampaignState {
   spinEnabled: boolean;
   whatsappNumber: string;
   whatsappMessage: string;
+  couponValidUntil: string;
+  couponValidityText: string;
+  wheelImageSize: number;
   submissionId: string | null;
   setSubmissionId: (id: string | null) => void;
 }
@@ -63,6 +66,9 @@ export const CampaignProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [spinEnabled, setSpinEnabled] = useState(true);
   const [whatsappNumber, setWhatsappNumber] = useState('919999999999');
   const [whatsappMessage, setWhatsappMessage] = useState('Hi, I received the Fondly reward.');
+  const [couponValidUntil, setCouponValidUntil] = useState('2026-04-19T01:00:00+05:30');
+  const [couponValidityText, setCouponValidityText] = useState('Coupon validity ended on 19-04-2026, 01:00 AM.');
+  const [wheelImageSize, setWheelImageSize] = useState(28);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [userData, setUserData] = useState<UserData>({
     phone: '',
@@ -97,6 +103,15 @@ export const CampaignProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setSpinEnabled(settings.spin_enabled);
         setWhatsappNumber(settings.whatsapp_number || '919999999999');
         setWhatsappMessage(settings.whatsapp_message || 'Hi, I received the Fondly reward.');
+        setCouponValidUntil(settings.coupon_valid_until || '2026-04-19T01:00:00+05:30');
+        setCouponValidityText(
+          settings.coupon_validity_text || 'Coupon validity ended on 19-04-2026, 01:00 AM.',
+        );
+        setWheelImageSize(
+          typeof settings.wheel_image_size === 'number' && Number.isFinite(settings.wheel_image_size)
+            ? settings.wheel_image_size
+            : 28,
+        );
       } catch {
         /* keep defaults; individual screens may toast */
       }
@@ -111,7 +126,8 @@ export const CampaignProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   return (
     <CampaignContext.Provider value={{
       step, setStep, userData, updateUserData, rewards, spinResult, setSpinResult,
-      hasSpun, setHasSpun, spinEnabled, whatsappNumber, whatsappMessage, submissionId, setSubmissionId,
+      hasSpun, setHasSpun, spinEnabled, whatsappNumber, whatsappMessage, couponValidUntil,
+      couponValidityText, wheelImageSize, submissionId, setSubmissionId,
     }}>
       {children}
     </CampaignContext.Provider>

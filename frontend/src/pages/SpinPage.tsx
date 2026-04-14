@@ -3,7 +3,10 @@ import SpinWheel from '@/components/SpinWheel';
 import { useCampaign } from '@/context/CampaignContext';
 
 const SpinPage = () => {
-  const { userData } = useCampaign();
+  const { userData, couponValidUntil, couponValidityText } = useCampaign();
+  const validityLabel = couponValidUntil
+    ? new Date(couponValidUntil).toLocaleString()
+    : '—';
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
@@ -50,7 +53,9 @@ const SpinPage = () => {
         transition={{ delay: 0.82, duration: 0.8 }}
         className="text-[11px] text-amber-200/80 font-sans text-center max-w-sm -mt-7 mb-8"
       >
-        Coupon validity: up to 19-04-2026, 01:00 AM
+        {couponValidityText}
+        {' '}
+        <span className="text-amber-100/90">Valid until: {validityLabel}</span>
       </motion.p>
 
       <motion.div
