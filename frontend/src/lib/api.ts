@@ -163,8 +163,12 @@ export async function insertCouponCodes(codes: string[]) {
   });
 }
 
-/** Removes unused coupon rows only (redeemed codes are kept). */
-export async function deleteUnusedCouponCodes(body: { codes?: string[]; prefix?: string }) {
+/** Delete coupons by prefix or exact codes; set `includeUsed` to remove redeemed rows too. */
+export async function deleteUnusedCouponCodes(body: {
+  codes?: string[];
+  prefix?: string;
+  includeUsed?: boolean;
+}) {
   return apiJson<{ deleted: number }>('/api/coupon-codes/delete-unused', {
     method: 'POST',
     body: JSON.stringify(body),

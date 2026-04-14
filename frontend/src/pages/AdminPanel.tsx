@@ -81,6 +81,7 @@ const AdminPanel = () => {
   const [bulkCouponText, setBulkCouponText] = useState('');
   const [addCouponsBusy, setAddCouponsBusy] = useState(false);
   const [removeLegacyBusy, setRemoveLegacyBusy] = useState(false);
+  const [purgeFndBusy, setPurgeFndBusy] = useState(false);
   const [adminTab, setAdminTab] = useState('rewards');
 
   useEffect(() => {
@@ -259,6 +260,31 @@ const AdminPanel = () => {
     }
   };
 
+  const purgeAllFndCoupons = async () => {
+    if (
+      !window.confirm(
+        'Remove every coupon whose code starts with FND, including ones already used? Submissions will still show the old coupon text, but those codes will no longer exist in the coupon list.',
+      )
+    ) {
+      return;
+    }
+    if (
+      !window.confirm('This cannot be undone. Delete ALL FND coupons from the database now?')
+    ) {
+      return;
+    }
+    setPurgeFndBusy(true);
+    try {
+      const { deleted } = await deleteUnusedCouponCodes({ prefix: 'FND', includeUsed: true });
+      await refreshCouponInventoryMeta();
+      toast.success(`Removed ${deleted} FND coupon row${deleted === 1 ? '' : 's'} (unused and used).`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not remove coupons');
+    } finally {
+      setPurgeFndBusy(false);
+    }
+  };
+
   /** While Coupons tab is open, keep lists in sync when codes are redeemed on the site. */
   useEffect(() => {
     if (loading || adminTab !== 'coupons') return;
@@ -433,11 +459,12 @@ const AdminPanel = () => {
                       </div>
                       <div className="flex flex-wrap items-end gap-4">
                         <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Probability %</Label>
+                          <Label className="text-xs text-muted-foreground">Spin weight</Label>
                           <Input
                             type="number"
                             className="w-24"
                             defaultValue={r.probability}
+                            title="Relative odds with stock; larger means more likely."
                             onBlur={(e) => updateRewardRow(r.id, { probability: parseInt(e.target.value, 10) || 0 })}
                           />
                         </div>
@@ -543,9 +570,19 @@ const AdminPanel = () => {
                         variant="destructive"
                         size="sm"
                         onClick={() => void removeUnusedLegacyFndCoupons()}
-                        disabled={removeLegacyBusy}
+                        disabled={removeLegacyBusy || purgeFndBusy}
                       >
                         {removeLegacyBusy ? 'Removing…' : 'Remove unused FND… codes'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        className="border-destructive/80 bg-destructive/90"
+                        onClick={() => void purgeAllFndCoupons()}
+                        disabled={purgeFndBusy || removeLegacyBusy}
+                      >
+                        {purgeFndBusy ? 'Purging…' : 'Remove ALL FND coupons'}
                       </Button>
                     </div>
                   </div>

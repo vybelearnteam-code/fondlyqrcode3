@@ -384,20 +384,26 @@ app.post('/api/coupon-codes/bulk', async (req, res) => {
   }
 });
 
-/** Delete coupon rows that are still unused (never delete redeemed codes). */
+/**
+ * Delete coupon rows by exact codes or by code prefix.
+ * Default: unused only (`includeUsed` false). Set `includeUsed: true` to remove redeemed rows too.
+ */
 app.post('/api/coupon-codes/delete-unused', async (req, res) => {
   try {
     const rawCodes = Array.isArray(req.body?.codes) ? req.body.codes : [];
     const codes = rawCodes.map((c) => String(c).trim().toUpperCase()).filter(Boolean);
     const prefixRaw = req.body?.prefix != null ? String(req.body.prefix).trim().toUpperCase() : '';
     const prefix = /^[A-Z0-9]+$/.test(prefixRaw) ? prefixRaw : '';
+    const includeUsed = parseBool(req.body?.includeUsed);
 
     const db = await getDb();
     let filter;
     if (codes.length) {
-      filter = { used: false, code: { $in: codes } };
+      const codeFilter = { $in: codes };
+      filter = includeUsed ? { code: codeFilter } : { used: false, code: codeFilter };
     } else if (prefix.length) {
-      filter = { used: false, code: new RegExp(`^${prefix.replace(/[^A-Z0-9]/g, '')}`) };
+      const re = new RegExp(`^${prefix.replace(/[^A-Z0-9]/g, '')}`);
+      filter = includeUsed ? { code: re } : { used: false, code: re };
     } else {
       return res.status(400).json({
         error: 'Send { codes: [...] } or { prefix: "FND" } (prefix: letters and digits only).',
