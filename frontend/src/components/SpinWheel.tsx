@@ -1,11 +1,65 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Percent } from 'lucide-react';
+import { Gift } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCampaign } from '@/context/CampaignContext';
 import type { Reward } from '@/context/CampaignContext';
 import { normalizeCouponInput } from '@/lib/couponCodes';
 import { ApiError, completeSpin, lookupCoupon } from '@/lib/api';
+
+/** Effective weight = admin probability × remaining stock (both shape the wheel and the RNG). */
+function rewardSpinWeight(r: Reward): number {
+  const p = Math.max(0, Number(r.probability) || 0);
+  const s = Math.max(0, Number(r.stock) || 0);
+  return p * s;
+}
+
+type SpinModel = {
+  segmentAnglesDeg: number[];
+  cumulativeStartDeg: number[];
+  weights: number[];
+  pick: () => Reward;
+};
+
+function buildSpinModel(list: Reward[]): SpinModel {
+  if (!list.length) {
+    return {
+      segmentAnglesDeg: [],
+      cumulativeStartDeg: [0],
+      weights: [],
+      pick: () => list[0],
+    };
+  }
+
+  let weights = list.map(rewardSpinWeight);
+  let totalW = weights.reduce((a, b) => a + b, 0);
+
+  if (totalW <= 0) {
+    weights = list.map((r) => Math.max(0, Number(r.probability) || 0));
+    totalW = weights.reduce((a, b) => a + b, 0);
+  }
+  if (totalW <= 0) {
+    weights = list.map(() => 1);
+    totalW = list.length;
+  }
+
+  const segmentAnglesDeg = weights.map((w) => (w / totalW) * 360);
+  const cumulativeStartDeg: number[] = [0];
+  for (const a of segmentAnglesDeg) {
+    cumulativeStartDeg.push(cumulativeStartDeg[cumulativeStartDeg.length - 1] + a);
+  }
+
+  const pick = (): Reward => {
+    let rand = Math.random() * totalW;
+    for (let i = 0; i < list.length; i++) {
+      rand -= weights[i];
+      if (rand <= 0) return list[i];
+    }
+    return list[list.length - 1];
+  };
+
+  return { segmentAnglesDeg, cumulativeStartDeg, weights, pick };
+}
 
 const SpinWheel: React.FC = () => {
   const { rewards, userData, setSpinResult, setHasSpun, setStep, setSubmissionId } = useCampaign();
@@ -13,23 +67,12 @@ const SpinWheel: React.FC = () => {
   const [rotation, setRotation] = useState(0);
   const wheelRef = useRef<HTMLDivElement>(null);
 
-  const activeRewards = rewards.filter((r) => r.enabled && r.stock > 0);
-  const segmentAngle = activeRewards.length ? 360 / activeRewards.length : 0;
-
-  const totalProb = useMemo(
-    () => activeRewards.reduce((sum, r) => sum + r.probability, 0) || 1,
-    [activeRewards],
+  const activeRewards = useMemo(
+    () => rewards.filter((r) => r.enabled && r.stock > 0),
+    [rewards],
   );
 
-  const pickReward = (): Reward => {
-    const total = activeRewards.reduce((sum, r) => sum + r.probability, 0);
-    let rand = Math.random() * total;
-    for (const reward of activeRewards) {
-      rand -= reward.probability;
-      if (rand <= 0) return reward;
-    }
-    return activeRewards[activeRewards.length - 1];
-  };
+  const spinModel = useMemo(() => buildSpinModel(activeRewards), [activeRewards]);
 
   const handleSpin = async () => {
     if (isSpinning || activeRewards.length === 0) return;
@@ -58,10 +101,11 @@ const SpinWheel: React.FC = () => {
 
     setIsSpinning(true);
 
-    const winner = pickReward();
+    const winner = spinModel.pick();
     const winnerIndex = activeRewards.findIndex((r) => r.id === winner.id);
-
-    const targetSegmentCenter = winnerIndex * segmentAngle + segmentAngle / 2;
+    const seg = spinModel.segmentAnglesDeg[winnerIndex] ?? 0;
+    const start = spinModel.cumulativeStartDeg[winnerIndex] ?? 0;
+    const targetSegmentCenter = start + seg / 2;
     const fullRotations = 5 + Math.floor(Math.random() * 3);
     const finalRotation = rotation + fullRotations * 360 + (360 - targetSegmentCenter);
 
@@ -122,13 +166,16 @@ const SpinWheel: React.FC = () => {
           <svg width={wheelSize} height={wheelSize} viewBox={`0 0 ${wheelSize} ${wheelSize}`}>
             <defs>
               {activeRewards.map((reward, i) => {
-                const startAngle = (i * segmentAngle * Math.PI) / 180;
-                const endAngle = ((i + 1) * segmentAngle * Math.PI) / 180;
+                const startDeg = spinModel.cumulativeStartDeg[i] ?? 0;
+                const endDeg = spinModel.cumulativeStartDeg[i + 1] ?? 0;
+                const segDeg = endDeg - startDeg;
+                const startAngle = (startDeg * Math.PI) / 180;
+                const endAngle = (endDeg * Math.PI) / 180;
                 const x1 = radius + radius * Math.sin(startAngle);
                 const y1 = radius - radius * Math.cos(startAngle);
                 const x2 = radius + radius * Math.sin(endAngle);
                 const y2 = radius - radius * Math.cos(endAngle);
-                const largeArc = segmentAngle > 180 ? 1 : 0;
+                const largeArc = segDeg > 180 ? 1 : 0;
                 const pathD = `M${radius},${radius} L${x1},${y1} A${radius},${radius} 0 ${largeArc},1 ${x2},${y2} Z`;
                 return (
                   <clipPath key={`clip-def-${reward.id}`} id={`wheel-clip-${reward.id}`}>
@@ -139,14 +186,17 @@ const SpinWheel: React.FC = () => {
             </defs>
 
             {activeRewards.map((reward, i) => {
-              const startAngle = (i * segmentAngle * Math.PI) / 180;
-              const endAngle = ((i + 1) * segmentAngle * Math.PI) / 180;
+              const startDeg = spinModel.cumulativeStartDeg[i] ?? 0;
+              const endDeg = spinModel.cumulativeStartDeg[i + 1] ?? 0;
+              const segDeg = endDeg - startDeg;
+              const startAngle = (startDeg * Math.PI) / 180;
+              const endAngle = (endDeg * Math.PI) / 180;
               const midAngle = (startAngle + endAngle) / 2;
               const x1 = radius + radius * Math.sin(startAngle);
               const y1 = radius - radius * Math.cos(startAngle);
               const x2 = radius + radius * Math.sin(endAngle);
               const y2 = radius - radius * Math.cos(endAngle);
-              const largeArc = segmentAngle > 180 ? 1 : 0;
+              const largeArc = segDeg > 180 ? 1 : 0;
               const pathD = `M${radius},${radius} L${x1},${y1} A${radius},${radius} 0 ${largeArc},1 ${x2},${y2} Z`;
 
               const labelRadius = radius * 0.62;
@@ -156,7 +206,6 @@ const SpinWheel: React.FC = () => {
               const labelRotation =
                 textRotationDeg > 90 && textRotationDeg < 270 ? textRotationDeg + 180 : textRotationDeg;
 
-              const pct = Math.round((reward.probability / totalProb) * 100);
               const fo = 56;
               const foX = textX - fo / 2;
               const foY = textY - fo / 2;
@@ -205,7 +254,7 @@ const SpinWheel: React.FC = () => {
                             }}
                           />
                         ) : (
-                          <Percent
+                          <Gift
                             size={26}
                             strokeWidth={1.35}
                             color="hsl(38, 50%, 78%)"
@@ -213,19 +262,6 @@ const SpinWheel: React.FC = () => {
                             aria-hidden
                           />
                         )}
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 700,
-                            fontFamily: 'DM Sans, system-ui, sans-serif',
-                            color: 'hsl(38, 52%, 82%)',
-                            letterSpacing: '0.02em',
-                            lineHeight: 1,
-                            textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-                          }}
-                        >
-                          {pct}%
-                        </span>
                         <span
                           style={{
                             fontSize: 7,

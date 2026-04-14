@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  deleteUnusedCouponCodes,
   fetchAllRewards,
   fetchAllSubmissions,
   fetchCampaignSettings,
@@ -56,6 +57,7 @@ type CouponRow = {
   used: boolean;
   used_at: string | null;
   created_at: string;
+  updated_at: string | null;
 };
 
 type CampaignSettings = {
@@ -63,6 +65,7 @@ type CampaignSettings = {
   spin_enabled: boolean;
   whatsapp_number: string | null;
   whatsapp_message: string | null;
+  coupon_inventory_saved_at: string | null;
 };
 
 const AdminPanel = () => {
@@ -74,6 +77,10 @@ const AdminPanel = () => {
   const [filterReward, setFilterReward] = useState('');
   const [loading, setLoading] = useState(true);
   const [couponBusy, setCouponBusy] = useState(false);
+  const [singleCoupon, setSingleCoupon] = useState('');
+  const [bulkCouponText, setBulkCouponText] = useState('');
+  const [addCouponsBusy, setAddCouponsBusy] = useState(false);
+  const [removeLegacyBusy, setRemoveLegacyBusy] = useState(false);
   const [adminTab, setAdminTab] = useState('rewards');
 
   useEffect(() => {
@@ -89,6 +96,12 @@ const AdminPanel = () => {
     const rows = await fetchCouponCodes();
     setCoupons(rows as CouponRow[]);
     return rows as CouponRow[];
+  };
+
+  const refreshCouponInventoryMeta = async () => {
+    const [rows, s] = await Promise.all([fetchCouponCodes(), fetchCampaignSettings()]);
+    setCoupons(rows as CouponRow[]);
+    setSettings(s as CampaignSettings);
   };
 
   const fetchAll = async () => {
@@ -111,15 +124,6 @@ const AdminPanel = () => {
     try {
       const cp = await fetchCouponCodes();
       setCoupons(cp as CouponRow[]);
-      const added = await insertMissingCodes(SHOP_COUPON_SEED);
-      const rows = await refreshCouponsFromDb();
-      if (added > 0) {
-        toast.success(`Imported ${added} new coupon code${added === 1 ? '' : 's'}.`);
-      } else if (rows.length === 0 && SHOP_COUPON_SEED.length > 0) {
-        toast.error(
-          'Coupon collection is empty after sync. Check MongoDB Atlas: `coupon_codes` collection and API logs.',
-        );
-      }
     } catch (e) {
       setCoupons([]);
       toast.error(
@@ -166,18 +170,92 @@ const AdminPanel = () => {
     setCouponBusy(true);
     try {
       const added = await insertMissingCodes(SHOP_COUPON_SEED);
-      const rows = await refreshCouponsFromDb();
+      await refreshCouponInventoryMeta();
       if (added > 0) {
-        toast.success(`Imported ${added} new coupon code${added === 1 ? '' : 's'}.`);
-      } else if (rows.length === 0 && SHOP_COUPON_SEED.length > 0) {
-        toast.error('Still no coupons in the database. Check MongoDB `coupon_codes` and server logs.');
+        toast.success(`Imported ${added} new coupon code${added === 1 ? '' : 's'} from the bundled campaign file.`);
+      } else if (SHOP_COUPON_SEED.length === 0) {
+        toast.message('Bundled campaign file has no codes to import.');
       } else {
-        toast.message('Campaign list is already fully imported.');
+        toast.message('Bundled campaign list is already fully imported.');
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Sync failed');
     } finally {
       setCouponBusy(false);
+    }
+  };
+
+  const addSingleCouponManually = async () => {
+    const code = singleCoupon.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!code) {
+      toast.error('Enter a coupon code.');
+      return;
+    }
+    setAddCouponsBusy(true);
+    try {
+      const { inserted } = await insertCouponCodes([code]);
+      await refreshCouponInventoryMeta();
+      if (inserted > 0) toast.success(`Added ${code}.`);
+      else toast.message('That code already exists.');
+      setSingleCoupon('');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not add coupon');
+    } finally {
+      setAddCouponsBusy(false);
+    }
+  };
+
+  const addBulkCouponsManually = async () => {
+    const lines = bulkCouponText
+      .split(/\r?\n/)
+      .map((l) => l.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''))
+      .filter(Boolean);
+    const seen = new Set<string>();
+    const codes = lines.filter((c) => {
+      if (seen.has(c)) return false;
+      seen.add(c);
+      return true;
+    });
+    if (!codes.length) {
+      toast.error('Paste one code per line.');
+      return;
+    }
+    setAddCouponsBusy(true);
+    try {
+      let inserted = 0;
+      const chunkSize = 50;
+      for (let i = 0; i < codes.length; i += chunkSize) {
+        const chunk = codes.slice(i, i + chunkSize);
+        const r = await insertCouponCodes(chunk);
+        inserted += r.inserted;
+      }
+      await refreshCouponInventoryMeta();
+      toast.success(`Added ${inserted} new code${inserted === 1 ? '' : 's'} (${codes.length - inserted} were already in the database).`);
+      setBulkCouponText('');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not add coupons');
+    } finally {
+      setAddCouponsBusy(false);
+    }
+  };
+
+  const removeUnusedLegacyFndCoupons = async () => {
+    if (
+      !window.confirm(
+        'Remove all unused coupons whose code starts with FND? Codes that were already used for a spin stay in the database.',
+      )
+    ) {
+      return;
+    }
+    setRemoveLegacyBusy(true);
+    try {
+      const { deleted } = await deleteUnusedCouponCodes({ prefix: 'FND' });
+      await refreshCouponInventoryMeta();
+      toast.success(`Removed ${deleted} unused FND coupon row${deleted === 1 ? '' : 's'}.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not remove coupons');
+    } finally {
+      setRemoveLegacyBusy(false);
     }
   };
 
@@ -187,7 +265,6 @@ const AdminPanel = () => {
 
     const syncCouponsTab = async () => {
       try {
-        await insertMissingCodes(SHOP_COUPON_SEED);
         await refreshCouponsFromDb();
       } catch {
         /* fetchAll or next poll will surface errors */
@@ -409,10 +486,18 @@ const AdminPanel = () => {
             <Card>
               <CardHeader>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <CardTitle className="text-lg">Coupon codes</CardTitle>
+                  <div>
+                    <CardTitle className="text-lg">Coupon codes</CardTitle>
+                    <CardDescription className="mt-1 text-xs">
+                      Last inventory change:{' '}
+                      {settings?.coupon_inventory_saved_at
+                        ? new Date(settings.coupon_inventory_saved_at).toLocaleString()
+                        : '—'}
+                    </CardDescription>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={resyncCampaignCoupons} disabled={couponBusy}>
-                      {couponBusy ? 'Syncing…' : 'Sync campaign list'}
+                      {couponBusy ? 'Syncing…' : 'Sync from file'}
                     </Button>
                     <Button variant="outline" size="sm" onClick={downloadCouponsCsv} disabled={!coupons.length}>
                       <Download className="w-4 h-4 mr-1" /> Download CSV
@@ -421,6 +506,50 @@ const AdminPanel = () => {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="rounded-md border border-border bg-muted/20 p-4 space-y-4">
+                  <p className="text-sm font-medium text-foreground">Add coupons manually</p>
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+                    <div className="flex-1 space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Single code</Label>
+                      <Input
+                        className="font-mono text-sm uppercase"
+                        placeholder="e.g. FD7K2A"
+                        value={singleCoupon}
+                        onChange={(e) => setSingleCoupon(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void addSingleCouponManually();
+                        }}
+                      />
+                    </div>
+                    <Button type="button" onClick={() => void addSingleCouponManually()} disabled={addCouponsBusy}>
+                      {addCouponsBusy ? 'Saving…' : 'Add one'}
+                    </Button>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Bulk (one code per line)</Label>
+                    <Textarea
+                      rows={5}
+                      className="font-mono text-xs resize-y min-h-[100px]"
+                      placeholder={'FD7K2A\nFD9X4M\n…'}
+                      value={bulkCouponText}
+                      onChange={(e) => setBulkCouponText(e.target.value)}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="secondary" onClick={() => void addBulkCouponsManually()} disabled={addCouponsBusy}>
+                        {addCouponsBusy ? 'Saving…' : 'Add all from list'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => void removeUnusedLegacyFndCoupons()}
+                        disabled={removeLegacyBusy}
+                      >
+                        {removeLegacyBusy ? 'Removing…' : 'Remove unused FND… codes'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">

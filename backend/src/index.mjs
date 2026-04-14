@@ -166,12 +166,24 @@ async function activateCampaignCoupons(db) {
         $setOnInsert: {
           id: randomUUID(),
           created_at: now,
+          updated_at: now,
         },
       },
       upsert: true,
     },
   }));
   await db.collection('coupon_codes').bulkWrite(ops, { ordered: false });
+}
+
+/** Bump when coupons are added or unused rows are removed from the admin tools. */
+async function touchCouponInventorySavedAt(db) {
+  const row = await db.collection('campaign_settings').findOne({});
+  if (!row) return;
+  const nowIso = new Date().toISOString();
+  await db.collection('campaign_settings').updateOne(
+    { id: row.id },
+    { $set: { coupon_inventory_saved_at: nowIso, updated_at: nowIso } },
+  );
 }
 
 function parseBool(v) {
@@ -262,6 +274,7 @@ app.get('/api/campaign-settings', async (_req, res) => {
       spin_enabled: row.spin_enabled,
       whatsapp_number: row.whatsapp_number ?? null,
       whatsapp_message: row.whatsapp_message ?? null,
+      coupon_inventory_saved_at: row.coupon_inventory_saved_at ? iso(row.coupon_inventory_saved_at) : null,
     });
   } catch (e) {
     console.error(e);
@@ -312,6 +325,7 @@ app.get('/api/coupon-codes', async (_req, res) => {
         used: Boolean(c.used),
         used_at: c.used_at ? iso(c.used_at) : null,
         created_at: iso(c.created_at),
+        updated_at: c.updated_at ? iso(c.updated_at) : c.created_at ? iso(c.created_at) : null,
       })),
     );
   } catch (e) {
@@ -345,6 +359,7 @@ app.post('/api/coupon-codes/bulk', async (req, res) => {
     if (!codes.length) return res.json({ inserted: 0 });
     const db = await getDb();
     let inserted = 0;
+    const now = new Date();
     for (const code of codes) {
       try {
         await db.collection('coupon_codes').insertOne({
@@ -352,7 +367,8 @@ app.post('/api/coupon-codes/bulk', async (req, res) => {
           code,
           used: false,
           used_at: null,
-          created_at: new Date(),
+          created_at: now,
+          updated_at: now,
         });
         inserted++;
       } catch (e) {
@@ -360,7 +376,37 @@ app.post('/api/coupon-codes/bulk', async (req, res) => {
         throw e;
       }
     }
+    if (inserted > 0) await touchCouponInventorySavedAt(db);
     res.json({ inserted });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e instanceof Error ? e.message : 'Server error' });
+  }
+});
+
+/** Delete coupon rows that are still unused (never delete redeemed codes). */
+app.post('/api/coupon-codes/delete-unused', async (req, res) => {
+  try {
+    const rawCodes = Array.isArray(req.body?.codes) ? req.body.codes : [];
+    const codes = rawCodes.map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    const prefixRaw = req.body?.prefix != null ? String(req.body.prefix).trim().toUpperCase() : '';
+    const prefix = /^[A-Z0-9]+$/.test(prefixRaw) ? prefixRaw : '';
+
+    const db = await getDb();
+    let filter;
+    if (codes.length) {
+      filter = { used: false, code: { $in: codes } };
+    } else if (prefix.length) {
+      filter = { used: false, code: new RegExp(`^${prefix.replace(/[^A-Z0-9]/g, '')}`) };
+    } else {
+      return res.status(400).json({
+        error: 'Send { codes: [...] } or { prefix: "FND" } (prefix: letters and digits only).',
+      });
+    }
+
+    const r = await db.collection('coupon_codes').deleteMany(filter);
+    if (r.deletedCount > 0) await touchCouponInventorySavedAt(db);
+    res.json({ deleted: r.deletedCount });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: e instanceof Error ? e.message : 'Server error' });
@@ -573,7 +619,7 @@ app.post('/api/spin/complete', async (req, res) => {
 
         const cu = await db.collection('coupon_codes').updateOne(
           { code: couponCode, used: false },
-          { $set: { used: true, used_at: now } },
+          { $set: { used: true, used_at: now, updated_at: now } },
           { session },
         );
         if (cu.modifiedCount !== 1) {

@@ -67,6 +67,7 @@ export async function fetchCampaignSettings() {
     spin_enabled: boolean;
     whatsapp_number: string | null;
     whatsapp_message: string | null;
+    coupon_inventory_saved_at: string | null;
   }>('/api/campaign-settings');
 }
 
@@ -144,6 +145,7 @@ export async function fetchCouponCodes() {
       used: boolean;
       used_at: string | null;
       created_at: string;
+      updated_at: string | null;
     }>
   >('/api/coupon-codes');
 }
@@ -158,6 +160,14 @@ export async function insertCouponCodes(codes: string[]) {
   return apiJson<{ inserted: number }>('/api/coupon-codes/bulk', {
     method: 'POST',
     body: JSON.stringify({ codes }),
+  });
+}
+
+/** Removes unused coupon rows only (redeemed codes are kept). */
+export async function deleteUnusedCouponCodes(body: { codes?: string[]; prefix?: string }) {
+  return apiJson<{ deleted: number }>('/api/coupon-codes/delete-unused', {
+    method: 'POST',
+    body: JSON.stringify(body),
   });
 }
 

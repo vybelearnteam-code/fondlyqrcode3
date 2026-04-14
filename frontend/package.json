@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "gen:coupons": "node scripts/gen-manual-coupons.mjs",
+    "gen:fd-shop-coupons": "node scripts/gen-fd-shop-coupons.mjs",
     "sync:shop-coupons": "node scripts/sync-shop-coupon-seed.mjs"
   },
   "dependencies": {
