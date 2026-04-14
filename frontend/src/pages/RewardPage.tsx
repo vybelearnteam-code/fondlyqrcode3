@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { useCampaign } from '@/context/CampaignContext';
 import GoldButton from '@/components/GoldButton';
 import { Gift, Sparkles } from 'lucide-react';
+import { stripPercentMarketingTitle } from '@/lib/sampleAssets';
 
 const UNLOCK_LABEL = "You've unlocked";
 
@@ -25,6 +26,10 @@ const RewardPage = () => {
   if (!spinResult) return null;
 
   const isTryAgain = spinResult.title === 'Try Again';
+  const displayTitle = stripPercentMarketingTitle(spinResult.title) || spinResult.title;
+  const displayDescription = spinResult.description
+    ? stripPercentMarketingTitle(spinResult.description) || spinResult.description
+    : '';
   const burst = !reduceMotion && !isTryAgain;
 
   const goForm = () => setStep('form');
@@ -176,10 +181,10 @@ const RewardPage = () => {
               animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
               transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
             >
-              {spinResult.title}
+              {displayTitle}
             </motion.span>
           ) : (
-            <span className="text-cream">{spinResult.title}</span>
+            <span className="text-cream">{displayTitle}</span>
           )}
         </motion.h2>
 
@@ -189,7 +194,7 @@ const RewardPage = () => {
           transition={{ delay: 0.72, duration: 0.7 }}
           className="text-muted-foreground text-sm text-center max-w-xs font-sans mb-4"
         >
-          {spinResult.description}
+          {displayDescription}
         </motion.p>
 
         {(spinResult.content || spinResult.subContent) ? (

@@ -6,6 +6,7 @@ import { useCampaign } from '@/context/CampaignContext';
 import type { Reward } from '@/context/CampaignContext';
 import { normalizeCouponInput } from '@/lib/couponCodes';
 import { ApiError, completeSpin, lookupCoupon } from '@/lib/api';
+import { stripPercentMarketingTitle } from '@/lib/sampleAssets';
 
 /** Effective weight = admin probability × remaining stock (both shape the wheel and the RNG). */
 function rewardSpinWeight(r: Reward): number {
@@ -278,7 +279,7 @@ const SpinWheel: React.FC = () => {
                             wordBreak: 'break-word',
                           }}
                         >
-                          {reward.title}
+                          {stripPercentMarketingTitle(reward.title)}
                         </span>
                       </div>
                     </foreignObject>

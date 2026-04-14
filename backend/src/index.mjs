@@ -94,8 +94,8 @@ async function ensureSeed(db) {
       ['Premium Dates Experience', '100g curated dates selection', 5, 10, 1],
       ['Daily Wellness Mix', '75g premium dry fruits blend', 10, 20, 2],
       ['Pure Honey Sample', '50g raw organic honey', 10, 30, 3],
-      ['20% Founder Offer', 'Exclusive founding discount', 15, 50, 4],
-      ['10% Wellness Offer', 'Welcome wellness discount', 20, 100, 5],
+      ['Founder Offer', 'Exclusive founding discount', 15, 50, 4],
+      ['Wellness Offer', 'Welcome wellness discount', 20, 100, 5],
       ['Founding Member Access', 'Early access to new launches', 15, 50, 6],
       ['Private Event Invite', 'Exclusive tasting event', 10, 20, 7],
       ['Try Again', 'Better luck next time', 15, 999, 8],
@@ -118,27 +118,27 @@ async function ensureSeed(db) {
     );
   }
 
-  // Keep reward image URLs populated with spice-themed product photos.
-  // These are stable public image links (easy to find via Google Images).
-  const spiceImagesByOrder = new Map([
-    [1, 'https://upload.wikimedia.org/wikipedia/commons/4/4c/Black_cardamom.jpg'],
-    [2, 'https://upload.wikimedia.org/wikipedia/commons/1/1c/Turmeric_powder.jpg'],
-    [3, 'https://upload.wikimedia.org/wikipedia/commons/4/48/Cinnamon_sticks.jpg'],
-    [4, 'https://upload.wikimedia.org/wikipedia/commons/0/0f/ClovesDried.jpg'],
-    [5, 'https://upload.wikimedia.org/wikipedia/commons/8/89/Black_peppercorns.jpg'],
-    [6, 'https://upload.wikimedia.org/wikipedia/commons/d/d3/Coriander_seeds.jpg'],
-    [7, 'https://upload.wikimedia.org/wikipedia/commons/3/32/Cumin_seeds_1.jpg'],
-    [8, 'https://upload.wikimedia.org/wikipedia/commons/1/12/Fennel_seeds.jpg'],
-  ]);
+  // Default wheel segment image (round ~28px in UI). Fills empty rows or legacy Wikimedia URLs.
+  const sampleWheelImage =
+    'https://drive.google.com/uc?export=view&id=1CTWgVfuoyOCnBlm6KfAcHXHqZFhvWXhk';
+  const wheelImageByOrder = new Map([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [n, sampleWheelImage]));
+
   const allRewards = await rewardsColl.find({}).project({ id: 1, sort_order: 1 }).toArray();
   const nowIso = new Date().toISOString();
   const updates = allRewards
     .map((r) => {
-      const imageUrl = spiceImagesByOrder.get(r.sort_order);
+      const imageUrl = wheelImageByOrder.get(r.sort_order);
       if (!imageUrl) return null;
       return {
         updateOne: {
-          filter: { id: r.id },
+          filter: {
+            id: r.id,
+            $or: [
+              { image_url: null },
+              { image_url: '' },
+              { image_url: { $regex: '^https://upload\\.wikimedia\\.org/', $options: 'i' } },
+            ],
+          },
           update: { $set: { image_url: imageUrl, updated_at: nowIso } },
         },
       };
@@ -147,6 +147,15 @@ async function ensureSeed(db) {
   if (updates.length) {
     await rewardsColl.bulkWrite(updates, { ordered: false });
   }
+
+  await rewardsColl.updateMany(
+    { title: '20% Founder Offer' },
+    { $set: { title: 'Founder Offer', updated_at: nowIso } },
+  );
+  await rewardsColl.updateMany(
+    { title: '10% Wellness Offer' },
+    { $set: { title: 'Wellness Offer', updated_at: nowIso } },
+  );
 }
 
 async function activateCampaignCoupons(db) {
