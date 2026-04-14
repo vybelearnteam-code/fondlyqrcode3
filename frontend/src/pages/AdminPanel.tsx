@@ -99,11 +99,29 @@ const AdminPanel = () => {
     return rows as CouponRow[];
   };
 
-  const refreshCouponInventoryMeta = async () => {
+  const refreshCouponInventoryMeta = async (): Promise<CampaignSettings | null> => {
     const [rows, s] = await Promise.all([fetchCouponCodes(), fetchCampaignSettings()]);
+    const next = s as CampaignSettings;
     setCoupons(rows as CouponRow[]);
-    setSettings(s as CampaignSettings);
+    setSettings(next);
+    return next;
   };
+
+  /** Split pasted bulk text: one code per line, or comma / semicolon / space separated. */
+  const parseBulkCouponInput = (text: string): string[] => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const part of text.split(/[\n,;\s\t]+/)) {
+      const c = part.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (!c || seen.has(c)) continue;
+      seen.add(c);
+      out.push(c);
+    }
+    return out;
+  };
+
+  const formatIssued = (iso: string | null | undefined) =>
+    iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
   const fetchAll = async () => {
     setLoading(true);
@@ -171,9 +189,14 @@ const AdminPanel = () => {
     setCouponBusy(true);
     try {
       const added = await insertMissingCodes(SHOP_COUPON_SEED);
-      await refreshCouponInventoryMeta();
+      const s = await refreshCouponInventoryMeta();
       if (added > 0) {
-        toast.success(`Imported ${added} new coupon code${added === 1 ? '' : 's'} from the bundled campaign file.`);
+        const when = s?.coupon_inventory_saved_at ? formatIssued(s.coupon_inventory_saved_at) : '';
+        toast.success(
+          when
+            ? `Imported ${added} new code${added === 1 ? '' : 's'} from file. Saved ${when}.`
+            : `Imported ${added} new code${added === 1 ? '' : 's'} from file.`,
+        );
       } else if (SHOP_COUPON_SEED.length === 0) {
         toast.message('Bundled campaign file has no codes to import.');
       } else {
@@ -195,9 +218,13 @@ const AdminPanel = () => {
     setAddCouponsBusy(true);
     try {
       const { inserted } = await insertCouponCodes([code]);
-      await refreshCouponInventoryMeta();
-      if (inserted > 0) toast.success(`Added ${code}.`);
-      else toast.message('That code already exists.');
+      const s = await refreshCouponInventoryMeta();
+      if (inserted > 0) {
+        const when = s?.coupon_inventory_saved_at ? formatIssued(s.coupon_inventory_saved_at) : '';
+        toast.success(when ? `Added ${code}. Issued (saved) ${when}.` : `Added ${code}.`);
+      } else {
+        toast.message('That code already exists.');
+      }
       setSingleCoupon('');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not add coupon');
@@ -207,18 +234,9 @@ const AdminPanel = () => {
   };
 
   const addBulkCouponsManually = async () => {
-    const lines = bulkCouponText
-      .split(/\r?\n/)
-      .map((l) => l.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''))
-      .filter(Boolean);
-    const seen = new Set<string>();
-    const codes = lines.filter((c) => {
-      if (seen.has(c)) return false;
-      seen.add(c);
-      return true;
-    });
+    const codes = parseBulkCouponInput(bulkCouponText);
     if (!codes.length) {
-      toast.error('Paste one code per line.');
+      toast.error('Paste codes: one per line, or separate with commas or spaces.');
       return;
     }
     setAddCouponsBusy(true);
@@ -230,8 +248,18 @@ const AdminPanel = () => {
         const r = await insertCouponCodes(chunk);
         inserted += r.inserted;
       }
-      await refreshCouponInventoryMeta();
-      toast.success(`Added ${inserted} new code${inserted === 1 ? '' : 's'} (${codes.length - inserted} were already in the database).`);
+      const s = await refreshCouponInventoryMeta();
+      const when = s?.coupon_inventory_saved_at ? formatIssued(s.coupon_inventory_saved_at) : '';
+      const dup = codes.length - inserted;
+      if (inserted > 0) {
+        toast.success(
+          when
+            ? `Issued ${inserted} new code${inserted === 1 ? '' : 's'}. Saved ${when}.${dup ? ` ${dup} duplicate(s) skipped.` : ''}`
+            : `Issued ${inserted} new code${inserted === 1 ? '' : 's'}.${dup ? ` ${dup} duplicate(s) skipped.` : ''}`,
+        );
+      } else {
+        toast.message(`No new codes (${dup} already in the database).`);
+      }
       setBulkCouponText('');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not add coupons');
@@ -359,8 +387,13 @@ const AdminPanel = () => {
       toast.error('No coupons to export.');
       return;
     }
-    const headers = ['code', 'used', 'used_at'];
-    const rows = coupons.map(c => [c.code, c.used ? 'yes' : 'no', c.used_at || '']);
+    const headers = ['code', 'issued_at', 'used', 'used_at'];
+    const rows = coupons.map((c) => [
+      c.code,
+      c.created_at || '',
+      c.used ? 'yes' : 'no',
+      c.used_at || '',
+    ]);
     const csv = [headers, ...rows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -515,11 +548,14 @@ const AdminPanel = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div>
                     <CardTitle className="text-lg">Coupon codes</CardTitle>
-                    <CardDescription className="mt-1 text-xs">
-                      Last inventory change:{' '}
-                      {settings?.coupon_inventory_saved_at
-                        ? new Date(settings.coupon_inventory_saved_at).toLocaleString()
-                        : '—'}
+                    <CardDescription className="mt-1 text-xs max-w-xl">
+                      <span className="text-muted-foreground">Last coupon save (add / remove / sync):</span>{' '}
+                      <span className="text-foreground font-medium tabular-nums">
+                        {settings?.coupon_inventory_saved_at ? formatIssued(settings.coupon_inventory_saved_at) : '—'}
+                      </span>
+                      <span className="block mt-1 text-muted-foreground">
+                        Issue codes below; each row shows when that code was added. CSV export includes issued date.
+                      </span>
                     </CardDescription>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -533,11 +569,16 @@ const AdminPanel = () => {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="rounded-md border border-border bg-muted/20 p-4 space-y-4">
-                  <p className="text-sm font-medium text-foreground">Add coupons manually</p>
+                <div className="rounded-md border border-border bg-muted/20 p-4 space-y-5">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Issue new coupons</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Add one code, or paste many. Bulk accepts line breaks, commas, or spaces between codes.
+                    </p>
+                  </div>
                   <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
                     <div className="flex-1 space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Single code</Label>
+                      <Label className="text-xs text-muted-foreground">Add one code</Label>
                       <Input
                         className="font-mono text-sm uppercase"
                         placeholder="e.g. FD7K2A"
@@ -549,21 +590,21 @@ const AdminPanel = () => {
                       />
                     </div>
                     <Button type="button" onClick={() => void addSingleCouponManually()} disabled={addCouponsBusy}>
-                      {addCouponsBusy ? 'Saving…' : 'Add one'}
+                      {addCouponsBusy ? 'Saving…' : 'Issue one'}
                     </Button>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Bulk (one code per line)</Label>
+                    <Label className="text-xs text-muted-foreground">Bulk issue (paste list)</Label>
                     <Textarea
-                      rows={5}
-                      className="font-mono text-xs resize-y min-h-[100px]"
-                      placeholder={'FD7K2A\nFD9X4M\n…'}
+                      rows={6}
+                      className="font-mono text-xs resize-y min-h-[120px]"
+                      placeholder={'FD7K2A, FD9X4M, FD3Q8L\nor one per line…'}
                       value={bulkCouponText}
                       onChange={(e) => setBulkCouponText(e.target.value)}
                     />
                     <div className="flex flex-wrap gap-2">
                       <Button type="button" variant="secondary" onClick={() => void addBulkCouponsManually()} disabled={addCouponsBusy}>
-                        {addCouponsBusy ? 'Saving…' : 'Add all from list'}
+                        {addCouponsBusy ? 'Saving…' : 'Issue all from list'}
                       </Button>
                       <Button
                         type="button"
@@ -600,17 +641,23 @@ const AdminPanel = () => {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Code</TableHead>
+                            <TableHead className="whitespace-nowrap">Issued</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {availableCouponRows.length === 0 ? (
                             <TableRow>
-                              <TableCell className="text-xs text-muted-foreground">No unused codes.</TableCell>
+                              <TableCell colSpan={2} className="text-xs text-muted-foreground">
+                                No unused codes.
+                              </TableCell>
                             </TableRow>
                           ) : (
                             availableCouponRows.map((c) => (
                               <TableRow key={c.id}>
                                 <TableCell className="font-mono text-xs">{c.code}</TableCell>
+                                <TableCell className="text-[10px] text-muted-foreground whitespace-nowrap tabular-nums">
+                                  {formatIssued(c.created_at)}
+                                </TableCell>
                               </TableRow>
                             ))
                           )}
@@ -630,13 +677,14 @@ const AdminPanel = () => {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Code</TableHead>
-                            <TableHead>Used at</TableHead>
+                            <TableHead className="whitespace-nowrap">Issued</TableHead>
+                            <TableHead className="whitespace-nowrap">Used at</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {usedCouponRows.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={2} className="text-xs text-muted-foreground">
+                              <TableCell colSpan={3} className="text-xs text-muted-foreground">
                                 No used codes yet.
                               </TableCell>
                             </TableRow>
@@ -644,8 +692,11 @@ const AdminPanel = () => {
                             usedCouponRows.map((c) => (
                               <TableRow key={c.id}>
                                 <TableCell className="font-mono text-xs">{c.code}</TableCell>
-                                <TableCell className="text-xs text-muted-foreground">
-                                  {c.used_at ? new Date(c.used_at).toLocaleString() : '—'}
+                                <TableCell className="text-[10px] text-muted-foreground whitespace-nowrap tabular-nums">
+                                  {formatIssued(c.created_at)}
+                                </TableCell>
+                                <TableCell className="text-xs text-muted-foreground whitespace-nowrap tabular-nums">
+                                  {c.used_at ? formatIssued(c.used_at) : '—'}
                                 </TableCell>
                               </TableRow>
                             ))
