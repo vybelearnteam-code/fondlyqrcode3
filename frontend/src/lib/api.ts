@@ -44,7 +44,9 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** Active rewards for the spin wheel */
-export async function fetchPublicRewards() {
+export async function fetchPublicRewards(options?: { omitDataImages?: boolean }) {
+  const q = new URLSearchParams({ scope: 'public' });
+  if (options?.omitDataImages) q.set('omit_data_images', '1');
   return apiJson<
     Array<{
       id: string;
@@ -58,7 +60,7 @@ export async function fetchPublicRewards() {
       enabled: boolean;
       sort_order: number;
     }>
-  >('/api/rewards?scope=public');
+  >(`/api/rewards?${q.toString()}`);
 }
 
 export async function fetchCampaignSettings() {

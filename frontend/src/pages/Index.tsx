@@ -18,9 +18,11 @@ const FlowRouter = () => {
   };
 
   return (
-    <PageTransition keyProp={step}>
-      {pages[step]}
-    </PageTransition>
+    <main id="main-content">
+      <PageTransition keyProp={step}>
+        {pages[step]}
+      </PageTransition>
+    </main>
   );
 };
 

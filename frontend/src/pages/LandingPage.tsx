@@ -83,9 +83,9 @@ const LandingPage = () => {
       </motion.p>
 
       <motion.h1
-        initial={{ opacity: 0, y: 30 }}
+        initial={{ opacity: 1, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1, delay: 1 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
         className="font-serif text-3xl md:text-5xl text-center leading-tight text-cream max-w-lg"
       >
         You found it.

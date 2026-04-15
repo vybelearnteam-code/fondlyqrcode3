@@ -58,6 +58,22 @@ export const useCampaign = () => {
   return ctx;
 };
 
+function mapApiRewardsToContext(
+  rewardsList: Awaited<ReturnType<typeof fetchPublicRewards>>,
+): Reward[] {
+  return rewardsList.map((r) => ({
+    id: r.id,
+    title: r.title,
+    description: r.description || '',
+    content: r.content || undefined,
+    subContent: r.sub_content || undefined,
+    probability: r.probability,
+    stock: r.stock,
+    enabled: r.enabled,
+    image: r.image_url || undefined,
+  }));
+}
+
 export const CampaignProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [step, setStep] = useState<FlowStep>('landing');
   const [hasSpun, setHasSpun] = useState(false);
@@ -84,22 +100,15 @@ export const CampaignProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   useEffect(() => {
+    let cancelled = false;
     const fetchData = async () => {
       try {
-        const [rewardsList, settings] = await Promise.all([fetchPublicRewards(), fetchCampaignSettings()]);
-        setRewards(
-          rewardsList.map((r) => ({
-            id: r.id,
-            title: r.title,
-            description: r.description || '',
-            content: r.content || undefined,
-            subContent: r.sub_content || undefined,
-            probability: r.probability,
-            stock: r.stock,
-            enabled: r.enabled,
-            image: r.image_url || undefined,
-          })),
-        );
+        const [liteRewards, settings] = await Promise.all([
+          fetchPublicRewards({ omitDataImages: true }),
+          fetchCampaignSettings(),
+        ]);
+        if (cancelled) return;
+        setRewards(mapApiRewardsToContext(liteRewards));
         setSpinEnabled(settings.spin_enabled);
         setWhatsappNumber(settings.whatsapp_number || '919999999999');
         setWhatsappMessage(settings.whatsapp_message || 'Hi, I received the Fondly reward.');
@@ -112,11 +121,34 @@ export const CampaignProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             ? settings.wheel_image_size
             : 28,
         );
+
+        void fetchPublicRewards({ omitDataImages: false })
+          .then((fullRewards) => {
+            if (cancelled) return;
+            const byId = new Map(fullRewards.map((r) => [r.id, r.image_url]));
+            setRewards((prev) =>
+              prev.map((r) => {
+                const url = byId.get(r.id);
+                return typeof url === 'string' && url.length > 0 ? { ...r, image: url } : r;
+              }),
+            );
+            setSpinResult((prev) => {
+              if (!prev) return prev;
+              const url = byId.get(prev.id);
+              return typeof url === 'string' && url.length > 0 ? { ...prev, image: url } : prev;
+            });
+          })
+          .catch(() => {
+            /* wheel shows placeholders until retry */
+          });
       } catch {
         /* keep defaults; individual screens may toast */
       }
     };
-    fetchData();
+    void fetchData();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const updateUserData = useCallback((data: Partial<UserData>) => {

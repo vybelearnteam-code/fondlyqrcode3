@@ -80,6 +80,17 @@ type CampaignSettingsDraft = {
   wheel_image_size: string;
 };
 
+type RewardDraft = {
+  title: string;
+  description: string;
+  image_url: string | null;
+  probability: string;
+  stock: string;
+  enabled: boolean;
+  content: string;
+  sub_content: string;
+};
+
 const AdminPanel = () => {
   const navigate = useNavigate();
   const [rewards, setRewards] = useState<Reward[]>([]);
@@ -95,6 +106,9 @@ const AdminPanel = () => {
   const [removeLegacyBusy, setRemoveLegacyBusy] = useState(false);
   const [purgeFndBusy, setPurgeFndBusy] = useState(false);
   const [imageUploadBusyByReward, setImageUploadBusyByReward] = useState<Record<string, boolean>>({});
+  const [rewardDrafts, setRewardDrafts] = useState<Record<string, RewardDraft>>({});
+  const [savingRewardById, setSavingRewardById] = useState<Record<string, boolean>>({});
+  const [savingWheelSize, setSavingWheelSize] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<CampaignSettingsDraft>({
     spin_enabled: true,
@@ -145,6 +159,14 @@ const AdminPanel = () => {
   const formatIssued = (iso: string | null | undefined) =>
     iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : '—';
 
+  const toLocalDateTimeInputValue = (isoLike: string | null | undefined): string => {
+    if (!isoLike) return '';
+    const d = new Date(isoLike);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   const fetchAll = async () => {
     setLoading(true);
     try {
@@ -154,6 +176,23 @@ const AdminPanel = () => {
         fetchCampaignSettings(),
       ]);
       setRewards(r as Reward[]);
+      setRewardDrafts(
+        Object.fromEntries(
+          (r as Reward[]).map((row) => [
+            row.id,
+            {
+              title: row.title || '',
+              description: row.description || '',
+              image_url: row.image_url || null,
+              probability: String(row.probability ?? 0),
+              stock: String(row.stock ?? 0),
+              enabled: Boolean(row.enabled),
+              content: row.content || '',
+              sub_content: row.sub_content || '',
+            } satisfies RewardDraft,
+          ]),
+        ),
+      );
       setSubmissions(s as Submission[]);
       const cs = c as CampaignSettings;
       setSettings(cs);
@@ -162,9 +201,7 @@ const AdminPanel = () => {
         whatsapp_number: cs.whatsapp_number || '',
         whatsapp_message: cs.whatsapp_message || '',
         coupon_validity_text: cs.coupon_validity_text || 'Coupon validity ended on 19-04-2026, 01:00 AM.',
-        coupon_valid_until_local: cs.coupon_valid_until
-          ? new Date(cs.coupon_valid_until).toISOString().slice(0, 16)
-          : '',
+        coupon_valid_until_local: toLocalDateTimeInputValue(cs.coupon_valid_until),
         wheel_image_size: String(cs.wheel_image_size ?? 28),
       });
     } catch (e) {
@@ -392,6 +429,46 @@ const AdminPanel = () => {
     }
   };
 
+  const setRewardDraftField = <K extends keyof RewardDraft>(rewardId: string, key: K, value: RewardDraft[K]) => {
+    setRewardDrafts((prev) => ({
+      ...prev,
+      [rewardId]: {
+        ...(prev[rewardId] ?? {
+          title: '',
+          description: '',
+          image_url: null,
+          probability: '0',
+          stock: '0',
+          enabled: true,
+          content: '',
+          sub_content: '',
+        }),
+        [key]: value,
+      },
+    }));
+  };
+
+  const saveRewardDraft = async (rewardId: string) => {
+    const d = rewardDrafts[rewardId];
+    if (!d) return;
+    setSavingRewardById((prev) => ({ ...prev, [rewardId]: true }));
+    try {
+      const ok = await updateRewardRow(rewardId, {
+        title: d.title,
+        description: d.description || null,
+        image_url: d.image_url,
+        probability: parseInt(d.probability, 10) || 0,
+        stock: parseInt(d.stock, 10) || 0,
+        enabled: d.enabled,
+        content: d.content || null,
+        sub_content: d.sub_content || null,
+      });
+      if (ok) toast.success('Reward saved.');
+    } finally {
+      setSavingRewardById((prev) => ({ ...prev, [rewardId]: false }));
+    }
+  };
+
   const updateSettings = async () => {
     if (!settings) return;
     const wheelSize = parseInt(settingsDraft.wheel_image_size, 10) || 28;
@@ -417,6 +494,21 @@ const AdminPanel = () => {
     }
   };
 
+  const saveWheelImageSizeFromRewards = async () => {
+    if (!settings) return;
+    const size = Math.max(12, Math.min(96, parseInt(settingsDraft.wheel_image_size, 10) || 28));
+    setSavingWheelSize(true);
+    try {
+      await updateCampaignSettings(settings.id, { wheel_image_size: size });
+      toast.success('Wheel image size updated');
+      await fetchAll();
+    } catch {
+      toast.error('Failed to update wheel image size');
+    } finally {
+      setSavingWheelSize(false);
+    }
+  };
+
   const uploadRewardImage = async (rewardId: string, file: File | null) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -437,8 +529,8 @@ const AdminPanel = () => {
         reader.readAsDataURL(file);
       });
       if (!dataUrl) throw new Error('Image read failed');
-      const ok = await updateRewardRow(rewardId, { image_url: dataUrl });
-      if (ok) toast.success('Reward image uploaded.');
+      setRewardDraftField(rewardId, 'image_url', dataUrl);
+      toast.success('Image selected. Click Save reward to apply.');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Image upload failed');
     } finally {
@@ -449,8 +541,8 @@ const AdminPanel = () => {
   const removeRewardImage = async (rewardId: string) => {
     setImageUploadBusyByReward((prev) => ({ ...prev, [rewardId]: true }));
     try {
-      await updateRewardRow(rewardId, { image_url: null });
-      toast.success('Reward image removed.');
+      setRewardDraftField(rewardId, 'image_url', null);
+      toast.success('Image removed in draft. Click Save reward to apply.');
     } catch {
       toast.error('Could not remove image');
     } finally {
@@ -546,6 +638,22 @@ const AdminPanel = () => {
                 <CardDescription>
                   Title + short description for lists and the wheel. <strong>Main text</strong> and <strong>Sub text</strong> are the long prize copy on the reward screen after a spin.
                 </CardDescription>
+                <div className="flex flex-wrap items-end gap-2 pt-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Wheel image width / height (px)</Label>
+                    <Input
+                      type="number"
+                      min={12}
+                      max={96}
+                      className="w-28"
+                      value={settingsDraft.wheel_image_size}
+                      onChange={(e) => setSettingsDraft((prev) => ({ ...prev, wheel_image_size: e.target.value }))}
+                    />
+                  </div>
+                  <Button type="button" size="sm" onClick={() => void saveWheelImageSizeFromRewards()} disabled={savingWheelSize}>
+                    {savingWheelSize ? 'Saving…' : 'Save image size'}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-8">
                 {rewards.map((r) => (
@@ -559,13 +667,16 @@ const AdminPanel = () => {
                       <div className="flex-1 min-w-[200px] grid sm:grid-cols-2 gap-3">
                         <div className="space-y-1">
                           <Label className="text-xs text-muted-foreground">Title</Label>
-                          <Input defaultValue={r.title} onBlur={(e) => updateRewardRow(r.id, { title: e.target.value })} />
+                          <Input
+                            value={rewardDrafts[r.id]?.title ?? r.title}
+                            onChange={(e) => setRewardDraftField(r.id, 'title', e.target.value)}
+                          />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs text-muted-foreground">Short description</Label>
                           <Input
-                            defaultValue={r.description || ''}
-                            onBlur={(e) => updateRewardRow(r.id, { description: e.target.value || null })}
+                            value={rewardDrafts[r.id]?.description ?? (r.description || '')}
+                            onChange={(e) => setRewardDraftField(r.id, 'description', e.target.value)}
                           />
                         </div>
                       </div>
@@ -573,9 +684,9 @@ const AdminPanel = () => {
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label className="text-xs text-muted-foreground">Reward image (upload from device)</Label>
-                        {r.image_url ? (
+                        {(rewardDrafts[r.id]?.image_url ?? r.image_url) ? (
                           <div className="flex items-center gap-3">
-                            <img src={r.image_url} alt="" className="w-11 h-11 rounded-full object-cover border border-border" />
+                            <img src={(rewardDrafts[r.id]?.image_url ?? r.image_url) || ''} alt="" className="w-11 h-11 rounded-full object-cover border border-border" />
                             <span className="text-[11px] text-muted-foreground">Image uploaded</span>
                           </div>
                         ) : (
@@ -597,7 +708,7 @@ const AdminPanel = () => {
                             type="button"
                             variant="outline"
                             size="sm"
-                            disabled={!r.image_url || Boolean(imageUploadBusyByReward[r.id])}
+                            disabled={!(rewardDrafts[r.id]?.image_url ?? r.image_url) || Boolean(imageUploadBusyByReward[r.id])}
                             onClick={() => void removeRewardImage(r.id)}
                           >
                             Delete image
@@ -613,9 +724,9 @@ const AdminPanel = () => {
                           <Input
                             type="number"
                             className="w-24"
-                            defaultValue={r.probability}
+                            value={rewardDrafts[r.id]?.probability ?? String(r.probability)}
                             title="Spin chance percentage. Higher value means more likely."
-                            onBlur={(e) => updateRewardRow(r.id, { probability: parseInt(e.target.value, 10) || 0 })}
+                            onChange={(e) => setRewardDraftField(r.id, 'probability', e.target.value)}
                           />
                         </div>
                         <div className="space-y-1">
@@ -623,12 +734,15 @@ const AdminPanel = () => {
                           <Input
                             type="number"
                             className="w-24"
-                            defaultValue={r.stock}
-                            onBlur={(e) => updateRewardRow(r.id, { stock: parseInt(e.target.value, 10) || 0 })}
+                            value={rewardDrafts[r.id]?.stock ?? String(r.stock)}
+                            onChange={(e) => setRewardDraftField(r.id, 'stock', e.target.value)}
                           />
                         </div>
                         <div className="flex items-center gap-2 pb-1">
-                          <Switch checked={r.enabled} onCheckedChange={(val) => updateRewardRow(r.id, { enabled: val })} />
+                          <Switch
+                            checked={rewardDrafts[r.id]?.enabled ?? r.enabled}
+                            onCheckedChange={(val) => setRewardDraftField(r.id, 'enabled', val)}
+                          />
                           <span className="text-xs text-muted-foreground">Enabled</span>
                         </div>
                       </div>
@@ -638,9 +752,9 @@ const AdminPanel = () => {
                       <Textarea
                         rows={4}
                         className="text-sm resize-y min-h-[88px]"
-                        defaultValue={r.content || ''}
+                        value={rewardDrafts[r.id]?.content ?? (r.content || '')}
                         placeholder="Shown as the main body on the prize screen after spin…"
-                        onBlur={(e) => updateRewardRow(r.id, { content: e.target.value || null })}
+                        onChange={(e) => setRewardDraftField(r.id, 'content', e.target.value)}
                       />
                     </div>
                     <div className="space-y-1">
@@ -648,10 +762,15 @@ const AdminPanel = () => {
                       <Textarea
                         rows={3}
                         className="text-sm resize-y min-h-[72px]"
-                        defaultValue={r.sub_content || ''}
+                        value={rewardDrafts[r.id]?.sub_content ?? (r.sub_content || '')}
                         placeholder="Smaller text under the main body (terms, delivery note, etc.)"
-                        onBlur={(e) => updateRewardRow(r.id, { sub_content: e.target.value || null })}
+                        onChange={(e) => setRewardDraftField(r.id, 'sub_content', e.target.value)}
                       />
+                    </div>
+                    <div className="flex justify-end">
+                      <Button type="button" size="sm" onClick={() => void saveRewardDraft(r.id)} disabled={Boolean(savingRewardById[r.id])}>
+                        {savingRewardById[r.id] ? 'Saving…' : 'Save reward'}
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -919,16 +1038,6 @@ const AdminPanel = () => {
                     type="datetime-local"
                     value={settingsDraft.coupon_valid_until_local}
                     onChange={(e) => setSettingsDraft((prev) => ({ ...prev, coupon_valid_until_local: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <p className="font-medium text-sm">Wheel image width / height (px)</p>
-                  <Input
-                    type="number"
-                    min={12}
-                    max={96}
-                    value={settingsDraft.wheel_image_size}
-                    onChange={(e) => setSettingsDraft((prev) => ({ ...prev, wheel_image_size: e.target.value }))}
                   />
                 </div>
                 <div className="pt-2">

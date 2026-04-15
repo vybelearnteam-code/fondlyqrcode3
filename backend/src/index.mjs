@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import { MongoClient } from 'mongodb';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,7 @@ if (!MONGODB_URI) {
 }
 
 const app = express();
+app.use(compression());
 app.use(cors({ origin: true }));
 // Reward image uploads use base64 data URLs, so keep JSON payload limit above default.
 app.use(express.json({ limit: '10mb' }));
@@ -193,6 +195,16 @@ function parseBool(v) {
   return Boolean(v);
 }
 
+/** Drop inlined / huge image payloads from public list JSON (wheel refetches full assets in the background). */
+function publicRewardImageUrl(imageUrl, omitDataImages) {
+  if (!omitDataImages) return imageUrl ?? null;
+  const s = imageUrl;
+  if (typeof s !== 'string' || !s) return null;
+  if (s.startsWith('data:')) return null;
+  if (s.length > 16384) return null;
+  return imageUrl ?? null;
+}
+
 // --- Routes ---
 
 app.get('/api/health', (_req, res) => {
@@ -203,6 +215,9 @@ app.get('/api/rewards', async (req, res) => {
   try {
     const db = await getDb();
     const scope = req.query.scope === 'admin' ? 'admin' : 'public';
+    const omitDataImages =
+      scope === 'public' &&
+      (req.query.omit_data_images === '1' || req.query.omit_data_images === 'true');
     const q =
       scope === 'public'
         ? { enabled: true, stock: { $gt: 0 } }
@@ -219,7 +234,7 @@ app.get('/api/rewards', async (req, res) => {
         description: r.description ?? null,
         content: r.content ?? null,
         sub_content: r.sub_content ?? null,
-        image_url: r.image_url ?? null,
+        image_url: publicRewardImageUrl(r.image_url, omitDataImages),
         probability: r.probability,
         stock: r.stock,
         enabled: r.enabled,
