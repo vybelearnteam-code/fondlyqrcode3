@@ -225,6 +225,29 @@ const RewardPage = () => {
         ) : null}
 
         <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.94, duration: 0.7 }}
+          className="w-full max-w-md mb-7 rounded-md border border-gold/25 bg-secondary/25 p-4 space-y-2"
+        >
+          <p className="text-center text-sm font-semibold text-cream font-sans">You are a lucky one! 🎉</p>
+          <p className="text-center text-xs text-muted-foreground leading-relaxed font-sans">
+            This is your prize. Our products are currently in preparation and will be available within <span className="text-cream font-medium">50 days</span>. During this time, we will connect with you personally.
+          </p>
+          <p className="text-center text-[11px] text-gold/90 font-sans">
+            Stay updated on your reward &amp; exclusive launches
+          </p>
+          <a
+            href="https://www.instagram.com/fondly.india"
+            target="_blank"
+            rel="noreferrer"
+            className="block w-full text-center rounded-md border border-gold/60 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold transition-all hover:bg-gold/20 hover:shadow-[0_0_16px_hsl(38_45%_60%/0.25)]"
+          >
+            Follow us on Instagram
+          </a>
+        </motion.div>
+
+        <motion.div
           initial={{ opacity: 0, y: 14, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ delay: 0.95, type: 'spring', stiffness: 200, damping: 18 }}

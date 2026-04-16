@@ -21,6 +21,8 @@ export interface UserData {
   otpVerified: boolean;
   name: string;
   address: string;
+  email: string;
+  whatsappNumber: string;
   city: string;
   pinCode: string;
   source: string;
@@ -92,6 +94,8 @@ export const CampaignProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     otpVerified: false,
     name: '',
     address: '',
+    email: '',
+    whatsappNumber: '',
     city: '',
     pinCode: '',
     source: '',

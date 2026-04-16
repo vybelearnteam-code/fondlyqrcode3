@@ -33,6 +33,64 @@ const COUPON_VALID_UNTIL_ISO = '2026-04-19T01:00:00+05:30';
 const COUPON_VALID_UNTIL = new Date(COUPON_VALID_UNTIL_ISO);
 const COUPON_EXPIRED_MESSAGE = 'Coupon validity ended on 19-04-2026, 01:00 AM.';
 const DEFAULT_WHEEL_IMAGE_SIZE = 28;
+const REWARD_TEMPLATE = [
+  {
+    title: '₹1–₹100 Discount',
+    description: 'Instant discount coupon',
+    probability: 30,
+    stock: 90,
+    content:
+      'Congratulations! You’ve unlocked a surprise discount between ₹1 and ₹100. Apply it at checkout and enjoy savings on your favorite products.',
+    sub_content: 'Valid on minimum purchase. Auto-applied or use code at checkout.',
+    sort_order: 1,
+  },
+  {
+    title: 'Surprise Cashback',
+    description: 'Cashback reward',
+    probability: 20,
+    stock: 90,
+    content:
+      'You’ve received a surprise cashback reward! The cashback will be credited after your purchase is completed.',
+    sub_content: 'Cashback may take up to 24 hours after order confirmation.',
+    sort_order: 2,
+  },
+  {
+    title: '10% OFF',
+    description: 'Flat 10% discount',
+    probability: 15,
+    stock: 90,
+    content: 'Nice! You’ve unlocked 10% OFF on your next purchase.',
+    sub_content: 'Valid for limited time. Cannot be combined with other offers.',
+    sort_order: 3,
+  },
+  {
+    title: 'Buy 1 Get 1 Free',
+    description: 'BOGO deal',
+    probability: 8,
+    stock: 30,
+    content: 'Amazing! Buy 1 product and get another absolutely FREE.',
+    sub_content: 'Applicable on selected products only.',
+    sort_order: 4,
+  },
+  {
+    title: '20% OFF',
+    description: 'Premium discount',
+    probability: 7,
+    stock: 40,
+    content: 'Great win! Enjoy a premium 20% discount on your order.',
+    sub_content: 'Limited-time reward. Use before expiry.',
+    sort_order: 5,
+  },
+  {
+    title: 'Try Again',
+    description: 'Better luck next time',
+    probability: 20,
+    stock: 200,
+    content: 'Almost there! Give it another spin and try your luck again.',
+    sub_content: 'More exciting rewards are waiting for you.',
+    sort_order: 6,
+  },
+];
 
 if (!MONGODB_URI) {
   console.error(
@@ -111,43 +169,52 @@ async function ensureSeed(db) {
   const rewardsColl = db.collection('rewards');
   if ((await rewardsColl.countDocuments()) === 0) {
     const now = new Date().toISOString();
-    const rows = [
-      ['Premium Dates Experience', '100g curated dates selection', 5, 10, 1],
-      ['Daily Wellness Mix', '75g premium dry fruits blend', 10, 20, 2],
-      ['Pure Honey Sample', '50g raw organic honey', 10, 30, 3],
-      ['Founder Offer', 'Exclusive founding discount', 15, 50, 4],
-      ['Wellness Offer', 'Welcome wellness discount', 20, 100, 5],
-      ['Founding Member Access', 'Early access to new launches', 15, 50, 6],
-      ['Private Event Invite', 'Exclusive tasting event', 10, 20, 7],
-      ['Try Again', 'Better luck next time', 15, 999, 8],
-    ];
     await rewardsColl.insertMany(
-      rows.map(([title, description, probability, stock, sort_order]) => ({
+      REWARD_TEMPLATE.map((row) => ({
         id: randomUUID(),
-        title,
-        description,
-        content: null,
-        sub_content: null,
+        title: row.title,
+        description: row.description,
+        content: row.content,
+        sub_content: row.sub_content,
         image_url: null,
-        probability,
-        stock,
+        probability: row.probability,
+        stock: row.stock,
         enabled: true,
-        sort_order,
+        sort_order: row.sort_order,
         created_at: now,
         updated_at: now,
       })),
     );
+    return;
   }
 
   const nowIso = new Date().toISOString();
-
+  for (const row of REWARD_TEMPLATE) {
+    await rewardsColl.updateOne(
+      { sort_order: row.sort_order },
+      {
+        $set: {
+          title: row.title,
+          description: row.description,
+          content: row.content,
+          sub_content: row.sub_content,
+          probability: row.probability,
+          stock: row.stock,
+          enabled: true,
+          updated_at: nowIso,
+        },
+        $setOnInsert: {
+          id: randomUUID(),
+          image_url: null,
+          created_at: nowIso,
+        },
+      },
+      { upsert: true },
+    );
+  }
   await rewardsColl.updateMany(
-    { title: '20% Founder Offer' },
-    { $set: { title: 'Founder Offer', updated_at: nowIso } },
-  );
-  await rewardsColl.updateMany(
-    { title: '10% Wellness Offer' },
-    { $set: { title: 'Wellness Offer', updated_at: nowIso } },
+    { sort_order: { $gt: REWARD_TEMPLATE.length } },
+    { $set: { enabled: false, updated_at: nowIso } },
   );
 }
 
@@ -562,6 +629,8 @@ app.patch('/api/user-submissions/:id', async (req, res) => {
     const allowed = [
       'name',
       'address',
+      'email',
+      'whatsapp_number',
       'city',
       'pin_code',
       'source',

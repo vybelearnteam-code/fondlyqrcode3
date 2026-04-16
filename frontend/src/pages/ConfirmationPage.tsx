@@ -26,9 +26,9 @@ const ConfirmationPage = () => {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1, duration: 0.6 }} className="bg-secondary/50 border border-border rounded-sm p-6 w-full max-w-xs mb-10 space-y-2">
         <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Name</span><span className="text-cream text-right">{userData.name}</span></div>
         <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Phone</span><span className="text-cream font-mono">+91 {userData.phone}</span></div>
+        <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">WhatsApp</span><span className="text-cream font-mono">+91 {userData.whatsappNumber || '—'}</span></div>
+        <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Email</span><span className="text-cream text-right max-w-[60%]">{userData.email || '—'}</span></div>
         <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Coupon</span><span className="text-gold font-mono text-right">{userData.couponCode}</span></div>
-        <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">PIN</span><span className="text-cream font-mono">{userData.pinCode}</span></div>
-        <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">City</span><span className="text-cream text-right">{userData.city}</span></div>
         <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Address</span><span className="text-cream text-right max-w-[55%]">{userData.address}</span></div>
         <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Reward</span><span className="text-gold text-right">{spinResult?.title}</span></div>
       </motion.div>
