@@ -1,9 +1,29 @@
 import { motion } from 'framer-motion';
 import { useCampaign } from '@/context/CampaignContext';
+import GoldButton from '@/components/GoldButton';
 import { Check } from 'lucide-react';
 
+/** Shown when campaign settings have no custom WhatsApp message. */
+const DEFAULT_CLAIM_WHATSAPP_INTRO =
+  'Hi! I have claimed my Fondly gift and would like to complete the next steps.';
+
 const ConfirmationPage = () => {
-  const { spinResult, userData } = useCampaign();
+  const { spinResult, userData, whatsappNumber, whatsappMessage } = useCampaign();
+
+  const openWhatsApp = () => {
+    const intro = whatsappMessage?.trim() || DEFAULT_CLAIM_WHATSAPP_INTRO;
+    const text = [
+      intro,
+      `Reward: ${spinResult?.title ?? '—'}.`,
+      `Plan name: ${userData.planName || '—'}.`,
+      `Coupon: ${userData.couponCode || '—'}.`,
+      `Phone: +91 ${userData.phone || '—'}.`,
+    ].join(' ');
+    const message = encodeURIComponent(text);
+    const digits = whatsappNumber.replace(/\D/g, '');
+    if (!digits) return;
+    window.open(`https://wa.me/${digits}?text=${message}`, '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
@@ -20,6 +40,17 @@ const ConfirmationPage = () => {
         <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Phone</span><span className="text-cream font-mono">+91 {userData.phone}</span></div>
         <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Coupon</span><span className="text-gold font-mono text-right">{userData.couponCode}</span></div>
         <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Reward</span><span className="text-gold text-right">{spinResult?.title}</span></div>
+      </motion.div>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1.25, duration: 0.8 }}
+        className="w-full max-w-xs"
+      >
+        <GoldButton onClick={openWhatsApp}>Continue to WhatsApp</GoldButton>
+        <p className="mt-3 text-[10px] text-center text-muted-foreground font-sans leading-relaxed">
+          Opens WhatsApp with a default message about your claimed gift. You can edit before sending.
+        </p>
       </motion.div>
       <motion.div initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 1.5, delay: 1.6 }} className="w-12 h-px bg-gold mt-12" />
       <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.8, duration: 0.8 }} className="mt-4 text-xs text-muted-foreground font-sans">Fondly — Wellness, Curated.</motion.p>
