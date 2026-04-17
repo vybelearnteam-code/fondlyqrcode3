@@ -31,19 +31,8 @@ const LandingPage = () => {
     setLoading(true);
 
     const digits = phone.replace(/\D/g, '');
-    try {
-      const { exists } = await phoneHasSubmission(digits);
-      if (exists) {
-        toast.error('This number is already registered. Each mobile number can be used only once.');
-        setLoading(false);
-        return;
-      }
-    } catch {
-      toast.error('Could not verify your number. Check your connection and try again.');
-      setLoading(false);
-      return;
-    }
 
+    // Validate coupon before phone registration — avoids "already registered" when coupon is invalid/used.
     let couponRow: { used: boolean; unlimited: boolean };
     try {
       couponRow = await lookupCoupon(code);
@@ -58,6 +47,19 @@ const LandingPage = () => {
     }
     if (couponRow.used && !couponRow.unlimited) {
       toast.error('This coupon has already been used for a spin.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { exists } = await phoneHasSubmission(digits);
+      if (exists) {
+        toast.error('This number is already registered. Each mobile number can be used only once.');
+        setLoading(false);
+        return;
+      }
+    } catch {
+      toast.error('Could not verify your number. Check your connection and try again.');
       setLoading(false);
       return;
     }
