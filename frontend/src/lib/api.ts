@@ -77,7 +77,7 @@ export async function fetchCampaignSettings() {
 }
 
 export async function lookupCoupon(code: string) {
-  return apiJson<{ code: string; used: boolean }>(`/api/coupons/${encodeURIComponent(code)}`);
+  return apiJson<{ code: string; used: boolean; unlimited: boolean }>(`/api/coupons/${encodeURIComponent(code)}`);
 }
 
 export async function phoneHasSubmission(phone: string) {
@@ -87,6 +87,7 @@ export async function phoneHasSubmission(phone: string) {
 export async function completeSpin(body: {
   phone: string;
   couponCode: string;
+  planName?: string;
   rewardId: string;
   rewardTitle: string;
 }) {
@@ -148,6 +149,7 @@ export async function fetchCouponCodes() {
       id: string;
       code: string;
       used: boolean;
+      unlimited: boolean;
       used_at: string | null;
       created_at: string;
       updated_at: string | null;
@@ -161,10 +163,10 @@ export async function fetchCouponCodeStrings(offset: number, limit: number) {
   );
 }
 
-export async function insertCouponCodes(codes: string[]) {
+export async function insertCouponCodes(codes: string[], unlimited?: boolean) {
   return apiJson<{ inserted: number }>('/api/coupon-codes/bulk', {
     method: 'POST',
-    body: JSON.stringify({ codes }),
+    body: JSON.stringify({ codes, unlimited: Boolean(unlimited) }),
   });
 }
 

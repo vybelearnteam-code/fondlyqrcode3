@@ -51,7 +51,7 @@ const SpinWheel: React.FC = () => {
 
     try {
       const row = await lookupCoupon(code);
-      if (row.used) {
+      if (row.used && !row.unlimited) {
         toast.error('This coupon is no longer valid for a spin.');
         return;
       }
@@ -80,6 +80,7 @@ const SpinWheel: React.FC = () => {
         row = await completeSpin({
           phone: phoneN,
           couponCode: code,
+          planName: userData.planName || '',
           rewardId: winner.id,
           rewardTitle: winner.title,
         });

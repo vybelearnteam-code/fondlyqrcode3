@@ -18,6 +18,7 @@ export interface Reward {
 export interface UserData {
   phone: string;
   couponCode: string;
+  planName: string;
   otpVerified: boolean;
   name: string;
   address: string;
@@ -91,6 +92,7 @@ export const CampaignProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [userData, setUserData] = useState<UserData>({
     phone: '',
     couponCode: '',
+    planName: '',
     otpVerified: false,
     name: '',
     address: '',

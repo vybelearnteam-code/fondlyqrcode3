@@ -10,6 +10,7 @@ const LandingPage = () => {
   const { setStep, updateUserData } = useCampaign();
   const [coupon, setCoupon] = useState('');
   const [phone, setPhone] = useState('');
+  const [planName, setPlanName] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleContinue = async () => {
@@ -22,10 +23,14 @@ const LandingPage = () => {
       toast.error('Enter a valid 10-digit mobile number.');
       return;
     }
+    if (!planName.trim()) {
+      toast.error('Enter your plan name.');
+      return;
+    }
 
     setLoading(true);
 
-    let couponRow: { used: boolean };
+    let couponRow: { used: boolean; unlimited: boolean };
     try {
       couponRow = await lookupCoupon(code);
     } catch (e) {
@@ -37,7 +42,7 @@ const LandingPage = () => {
       setLoading(false);
       return;
     }
-    if (couponRow.used) {
+    if (couponRow.used && !couponRow.unlimited) {
       toast.error('This coupon has already been used for a spin.');
       setLoading(false);
       return;
@@ -57,7 +62,7 @@ const LandingPage = () => {
       return;
     }
 
-    updateUserData({ phone: digits, couponCode: code, otpVerified: true });
+    updateUserData({ phone: digits, couponCode: code, planName: planName.trim(), otpVerified: true });
     setStep('spin');
     setLoading(false);
   };
@@ -130,6 +135,16 @@ const LandingPage = () => {
               className="w-full bg-transparent border-b border-border py-3 pl-10 text-cream font-sans text-lg tracking-wide placeholder:text-muted-foreground/40 focus:outline-none focus:border-gold transition-colors"
             />
           </div>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.25em] text-gold/80 font-sans mb-2">Plan name</p>
+          <input
+            type="text"
+            value={planName}
+            onChange={(e) => setPlanName(e.target.value)}
+            placeholder="Enter your plan name"
+            className="w-full bg-transparent border-b border-border py-3 text-cream font-sans text-sm tracking-wide placeholder:text-muted-foreground/40 focus:outline-none focus:border-gold transition-colors"
+          />
         </div>
         <GoldButton onClick={handleContinue} disabled={loading}>
           {loading ? 'Please wait…' : 'Continue'}

@@ -33,7 +33,7 @@ const RewardPage = () => {
     : '';
   const burst = !reduceMotion && !isTryAgain;
 
-  const goForm = () => setStep('form');
+  const goForm = () => setStep('confirmation');
 
   if (isTryAgain) {
     return (
@@ -254,9 +254,9 @@ const RewardPage = () => {
           className="w-full max-w-xs space-y-4"
         >
           <p className="text-center text-[11px] text-gold/90 font-sans tracking-wider uppercase">
-            Collect your gift — add delivery details next
+            Claim your gift now
           </p>
-          <GoldButton onClick={goForm}>Claim &amp; enter details</GoldButton>
+          <GoldButton onClick={goForm}>Go to confirmation</GoldButton>
         </motion.div>
       </div>
     </div>

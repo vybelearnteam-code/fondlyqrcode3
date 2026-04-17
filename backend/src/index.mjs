@@ -148,7 +148,12 @@ function readCampaignCouponCodes() {
 async function ensureIndexes(db) {
   await db.collection('coupon_codes').createIndex({ code: 1 }, { unique: true });
   await db.collection('user_submissions').createIndex({ phone: 1 }, { unique: true });
-  await db.collection('user_submissions').createIndex({ coupon_code: 1 }, { unique: true, sparse: true });
+  try {
+    await db.collection('user_submissions').dropIndex('coupon_code_1');
+  } catch {
+    /* ignore when old index does not exist */
+  }
+  await db.collection('user_submissions').createIndex({ coupon_code: 1 }, { sparse: true });
 }
 
 async function ensureSeed(db) {
@@ -234,6 +239,7 @@ async function activateCampaignCoupons(db) {
         },
         $setOnInsert: {
           id: randomUUID(),
+          unlimited: false,
           created_at: now,
           updated_at: now,
         },
@@ -413,7 +419,7 @@ app.get('/api/coupons/:code', async (req, res) => {
     if (!code) return res.status(400).json({ error: 'Invalid code' });
     const row = await db.collection('coupon_codes').findOne({ code });
     if (!row) return res.status(404).json({ error: 'Invalid coupon code.' });
-    res.json({ code: row.code, used: Boolean(row.used) });
+    res.json({ code: row.code, used: Boolean(row.used), unlimited: Boolean(row.unlimited) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: e instanceof Error ? e.message : 'Server error' });
@@ -429,6 +435,7 @@ app.get('/api/coupon-codes', async (_req, res) => {
         id: c.id,
         code: c.code,
         used: Boolean(c.used),
+        unlimited: Boolean(c.unlimited),
         used_at: c.used_at ? iso(c.used_at) : null,
         created_at: iso(c.created_at),
         updated_at: c.updated_at ? iso(c.updated_at) : c.created_at ? iso(c.created_at) : null,
@@ -462,6 +469,7 @@ app.get('/api/coupon-codes/codes-only', async (req, res) => {
 app.post('/api/coupon-codes/bulk', async (req, res) => {
   try {
     const codes = Array.isArray(req.body?.codes) ? req.body.codes.map((c) => String(c).trim().toUpperCase()).filter(Boolean) : [];
+    const unlimited = parseBool(req.body?.unlimited);
     if (!codes.length) return res.json({ inserted: 0 });
     const db = await getDb();
     let inserted = 0;
@@ -472,6 +480,7 @@ app.post('/api/coupon-codes/bulk', async (req, res) => {
           id: randomUUID(),
           code,
           used: false,
+          unlimited,
           used_at: null,
           created_at: now,
           updated_at: now,
@@ -666,6 +675,8 @@ app.post('/api/spin/complete', async (req, res) => {
   const couponCode = String(req.body?.couponCode || '')
     .trim()
     .toUpperCase();
+  const planNameRaw = String(req.body?.planName || '').trim();
+  const planName = planNameRaw ? planNameRaw.slice(0, 120) : null;
   const rewardId = String(req.body?.rewardId || '');
   const rewardTitle = String(req.body?.rewardTitle || '');
 
@@ -693,7 +704,7 @@ app.post('/api/spin/complete', async (req, res) => {
         }
 
         const coupon = await db.collection('coupon_codes').findOne({ code: couponCode }, { session });
-        if (!coupon || coupon.used) {
+        if (!coupon || (coupon.used && !coupon.unlimited)) {
           throw Object.assign(new Error('Invalid or used coupon'), { code: 'COUPON' });
         }
 
@@ -716,7 +727,7 @@ app.post('/api/spin/complete', async (req, res) => {
               reward_id: rewardId,
               reward_title: rewardTitle,
               otp_verified: true,
-              name: null,
+              name: planName,
               address: null,
               city: null,
               pin_code: null,
@@ -735,13 +746,15 @@ app.post('/api/spin/complete', async (req, res) => {
           throw e;
         }
 
-        const cu = await db.collection('coupon_codes').updateOne(
-          { code: couponCode, used: false },
-          { $set: { used: true, used_at: now, updated_at: now } },
-          { session },
-        );
-        if (cu.modifiedCount !== 1) {
-          throw Object.assign(new Error('Coupon could not be marked used'), { code: 'COUPON' });
+        if (!coupon.unlimited) {
+          const cu = await db.collection('coupon_codes').updateOne(
+            { code: couponCode, used: false },
+            { $set: { used: true, used_at: now, updated_at: now } },
+            { session },
+          );
+          if (cu.modifiedCount !== 1) {
+            throw Object.assign(new Error('Coupon could not be marked used'), { code: 'COUPON' });
+          }
         }
       });
 

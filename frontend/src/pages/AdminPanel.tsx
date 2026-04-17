@@ -55,6 +55,7 @@ type CouponRow = {
   id: string;
   code: string;
   used: boolean;
+  unlimited: boolean;
   used_at: string | null;
   created_at: string;
   updated_at: string | null;
@@ -73,8 +74,6 @@ type CampaignSettings = {
 
 type CampaignSettingsDraft = {
   spin_enabled: boolean;
-  whatsapp_number: string;
-  whatsapp_message: string;
   coupon_validity_text: string;
   coupon_valid_until_local: string;
   wheel_image_size: string;
@@ -101,7 +100,9 @@ const AdminPanel = () => {
   const [loading, setLoading] = useState(true);
   const [couponBusy, setCouponBusy] = useState(false);
   const [singleCoupon, setSingleCoupon] = useState('');
+  const [singleCouponUnlimited, setSingleCouponUnlimited] = useState(false);
   const [bulkCouponText, setBulkCouponText] = useState('');
+  const [bulkCouponUnlimited, setBulkCouponUnlimited] = useState(false);
   const [addCouponsBusy, setAddCouponsBusy] = useState(false);
   const [removeLegacyBusy, setRemoveLegacyBusy] = useState(false);
   const [purgeFndBusy, setPurgeFndBusy] = useState(false);
@@ -112,8 +113,6 @@ const AdminPanel = () => {
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<CampaignSettingsDraft>({
     spin_enabled: true,
-    whatsapp_number: '',
-    whatsapp_message: '',
     coupon_validity_text: 'Coupon validity ended on 19-04-2026, 01:00 AM.',
     coupon_valid_until_local: '',
     wheel_image_size: '28',
@@ -198,8 +197,6 @@ const AdminPanel = () => {
       setSettings(cs);
       setSettingsDraft({
         spin_enabled: cs.spin_enabled ?? true,
-        whatsapp_number: cs.whatsapp_number || '',
-        whatsapp_message: cs.whatsapp_message || '',
         coupon_validity_text: cs.coupon_validity_text || 'Coupon validity ended on 19-04-2026, 01:00 AM.',
         coupon_valid_until_local: toLocalDateTimeInputValue(cs.coupon_valid_until),
         wheel_image_size: String(cs.wheel_image_size ?? 28),
@@ -287,7 +284,7 @@ const AdminPanel = () => {
     }
     setAddCouponsBusy(true);
     try {
-      const { inserted } = await insertCouponCodes([code]);
+      const { inserted } = await insertCouponCodes([code], singleCouponUnlimited);
       const s = await refreshCouponInventoryMeta();
       if (inserted > 0) {
         const when = s?.coupon_inventory_saved_at ? formatIssued(s.coupon_inventory_saved_at) : '';
@@ -296,6 +293,7 @@ const AdminPanel = () => {
         toast.message('That code already exists.');
       }
       setSingleCoupon('');
+      setSingleCouponUnlimited(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not add coupon');
     } finally {
@@ -315,7 +313,7 @@ const AdminPanel = () => {
       const chunkSize = 50;
       for (let i = 0; i < codes.length; i += chunkSize) {
         const chunk = codes.slice(i, i + chunkSize);
-        const r = await insertCouponCodes(chunk);
+        const r = await insertCouponCodes(chunk, bulkCouponUnlimited);
         inserted += r.inserted;
       }
       const s = await refreshCouponInventoryMeta();
@@ -331,6 +329,7 @@ const AdminPanel = () => {
         toast.message(`No new codes (${dup} already in the database).`);
       }
       setBulkCouponText('');
+      setBulkCouponUnlimited(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not add coupons');
     } finally {
@@ -474,8 +473,6 @@ const AdminPanel = () => {
     const wheelSize = parseInt(settingsDraft.wheel_image_size, 10) || 28;
     const updates: Record<string, string | number | boolean | null> = {
       spin_enabled: settingsDraft.spin_enabled,
-      whatsapp_number: settingsDraft.whatsapp_number || null,
-      whatsapp_message: settingsDraft.whatsapp_message || null,
       coupon_validity_text: settingsDraft.coupon_validity_text || null,
       coupon_valid_until: settingsDraft.coupon_valid_until_local
         ? new Date(settingsDraft.coupon_valid_until_local).toISOString()
@@ -551,10 +548,10 @@ const AdminPanel = () => {
   };
 
   const exportCSV = () => {
-    const headers = ['Name', 'Phone', 'Coupon', 'PIN', 'Verified', 'Reward', 'Address', 'City', 'Source', 'Date'];
+    const headers = ['Plan Name', 'Phone', 'Coupon', 'PIN', 'Verified', 'Reward', 'Date'];
     const rows = submissions.map(s => [
       s.name || '', s.phone, s.coupon_code || '', s.pin_code || '', s.otp_verified ? 'Yes' : 'No', s.reward_title || '',
-      s.address || '', s.city || '', s.source || '', new Date(s.created_at).toLocaleString(),
+      new Date(s.created_at).toLocaleString(),
     ]);
     const csv = [headers, ...rows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -569,9 +566,10 @@ const AdminPanel = () => {
       toast.error('No coupons to export.');
       return;
     }
-    const headers = ['code', 'issued_at', 'used', 'used_at'];
+    const headers = ['code', 'type', 'issued_at', 'used', 'used_at'];
     const rows = coupons.map((c) => [
       c.code,
+      c.unlimited ? 'unlimited' : 'single-use',
       c.created_at || '',
       c.used ? 'yes' : 'no',
       c.used_at || '',
@@ -810,8 +808,8 @@ const AdminPanel = () => {
                     <p className="text-xs font-semibold uppercase tracking-wide text-gold/90">Manual coupon creation</p>
                     <p className="text-sm font-medium text-foreground mt-1">Issue new coupons</p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Create codes in the database: one at a time, or a bulk list (line breaks, commas, or spaces). These
-                      are not wheel images — set segment photos under the Rewards tab.
+                      Create codes in the database: one at a time, or a bulk list (line breaks, commas, or spaces). You can
+                      mark new codes as unlimited, so the same code can be used by unlimited users.
                     </p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
@@ -827,6 +825,10 @@ const AdminPanel = () => {
                         }}
                       />
                     </div>
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground pb-2">
+                      <Switch checked={singleCouponUnlimited} onCheckedChange={setSingleCouponUnlimited} />
+                      Unlimited use
+                    </label>
                     <Button type="button" onClick={() => void addSingleCouponManually()} disabled={addCouponsBusy}>
                       {addCouponsBusy ? 'Saving…' : 'Issue one'}
                     </Button>
@@ -841,6 +843,10 @@ const AdminPanel = () => {
                       onChange={(e) => setBulkCouponText(e.target.value)}
                     />
                     <div className="flex flex-wrap gap-2">
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground pr-2">
+                        <Switch checked={bulkCouponUnlimited} onCheckedChange={setBulkCouponUnlimited} />
+                        Unlimited use
+                      </label>
                       <Button type="button" variant="secondary" onClick={() => void addBulkCouponsManually()} disabled={addCouponsBusy}>
                         {addCouponsBusy ? 'Saving…' : 'Issue all from list'}
                       </Button>
@@ -879,13 +885,14 @@ const AdminPanel = () => {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Code</TableHead>
+                            <TableHead className="whitespace-nowrap">Type</TableHead>
                             <TableHead className="whitespace-nowrap">Issued</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {availableCouponRows.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={2} className="text-xs text-muted-foreground">
+                              <TableCell colSpan={3} className="text-xs text-muted-foreground">
                                 No unused codes.
                               </TableCell>
                             </TableRow>
@@ -893,6 +900,9 @@ const AdminPanel = () => {
                             availableCouponRows.map((c) => (
                               <TableRow key={c.id}>
                                 <TableCell className="font-mono text-xs">{c.code}</TableCell>
+                                <TableCell className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                  {c.unlimited ? 'Unlimited' : 'Single'}
+                                </TableCell>
                                 <TableCell className="text-[10px] text-muted-foreground whitespace-nowrap tabular-nums">
                                   {formatIssued(c.created_at)}
                                 </TableCell>
@@ -915,6 +925,7 @@ const AdminPanel = () => {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Code</TableHead>
+                            <TableHead className="whitespace-nowrap">Type</TableHead>
                             <TableHead className="whitespace-nowrap">Issued</TableHead>
                             <TableHead className="whitespace-nowrap">Used at</TableHead>
                           </TableRow>
@@ -922,7 +933,7 @@ const AdminPanel = () => {
                         <TableBody>
                           {usedCouponRows.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={3} className="text-xs text-muted-foreground">
+                              <TableCell colSpan={4} className="text-xs text-muted-foreground">
                                 No used codes yet.
                               </TableCell>
                             </TableRow>
@@ -930,6 +941,9 @@ const AdminPanel = () => {
                             usedCouponRows.map((c) => (
                               <TableRow key={c.id}>
                                 <TableCell className="font-mono text-xs">{c.code}</TableCell>
+                                <TableCell className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                  {c.unlimited ? 'Unlimited' : 'Single'}
+                                </TableCell>
                                 <TableCell className="text-[10px] text-muted-foreground whitespace-nowrap tabular-nums">
                                   {formatIssued(c.created_at)}
                                 </TableCell>
@@ -966,13 +980,11 @@ const AdminPanel = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
+                      <TableHead>Plan Name</TableHead>
                       <TableHead>Phone</TableHead>
                       <TableHead>Coupon</TableHead>
                       <TableHead>PIN</TableHead>
                       <TableHead>Reward</TableHead>
-                      <TableHead>City</TableHead>
-                      <TableHead>Source</TableHead>
                       <TableHead>Date</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -984,8 +996,6 @@ const AdminPanel = () => {
                         <TableCell className="font-mono text-xs">{s.coupon_code || '—'}</TableCell>
                         <TableCell className="font-mono text-xs">{s.pin_code || '—'}</TableCell>
                         <TableCell>{s.reward_title || '—'}</TableCell>
-                        <TableCell>{s.city || '—'}</TableCell>
-                        <TableCell>{s.source || '—'}</TableCell>
                         <TableCell className="text-xs">{new Date(s.created_at).toLocaleDateString()}</TableCell>
                       </TableRow>
                     ))}
@@ -1006,22 +1016,6 @@ const AdminPanel = () => {
                   <Switch
                     checked={settingsDraft.spin_enabled}
                     onCheckedChange={(val) => setSettingsDraft((prev) => ({ ...prev, spin_enabled: val }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <p className="font-medium text-sm">WhatsApp number</p>
-                  <Input
-                    value={settingsDraft.whatsapp_number}
-                    placeholder="919999999999"
-                    onChange={(e) => setSettingsDraft((prev) => ({ ...prev, whatsapp_number: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <p className="font-medium text-sm">WhatsApp message</p>
-                  <Input
-                    value={settingsDraft.whatsapp_message}
-                    placeholder="Hi, I received the Fondly reward."
-                    onChange={(e) => setSettingsDraft((prev) => ({ ...prev, whatsapp_message: e.target.value }))}
                   />
                 </div>
                 <div className="space-y-2">
