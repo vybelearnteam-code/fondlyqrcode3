@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { fetchCampaignSettings, fetchPublicRewards } from '@/lib/api';
 
 export interface Reward {
@@ -51,6 +52,8 @@ interface CampaignState {
   wheelImageSize: number;
   submissionId: string | null;
   setSubmissionId: (id: string | null) => void;
+  /** Latest stock/probability from server (call before spin so the wheel matches DB). */
+  refreshRewards: () => Promise<Reward[]>;
 }
 
 const CampaignContext = createContext<CampaignState | null>(null);
@@ -161,11 +164,38 @@ export const CampaignProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setUserData(prev => ({ ...prev, ...data }));
   }, []);
 
+  const refreshRewards = useCallback(async (): Promise<Reward[]> => {
+    const liteRewards = await fetchPublicRewards({ omitDataImages: true });
+    const mapped = mapApiRewardsToContext(liteRewards);
+    flushSync(() => {
+      setRewards(mapped);
+    });
+    void fetchPublicRewards({ omitDataImages: false })
+      .then((fullRewards) => {
+        const byId = new Map(fullRewards.map((r) => [r.id, r.image_url]));
+        setRewards((prev) =>
+          prev.map((r) => {
+            const url = byId.get(r.id);
+            return typeof url === 'string' && url.length > 0 ? { ...r, image: url } : r;
+          }),
+        );
+        setSpinResult((prev) => {
+          if (!prev) return prev;
+          const url = byId.get(prev.id);
+          return typeof url === 'string' && url.length > 0 ? { ...prev, image: url } : prev;
+        });
+      })
+      .catch(() => {
+        /* keep lite images */
+      });
+    return mapped;
+  }, []);
+
   return (
     <CampaignContext.Provider value={{
       step, setStep, userData, updateUserData, rewards, spinResult, setSpinResult,
       hasSpun, setHasSpun, spinEnabled, whatsappNumber, whatsappMessage, couponValidUntil,
-      couponValidityText, wheelImageSize, submissionId, setSubmissionId,
+      couponValidityText, wheelImageSize, submissionId, setSubmissionId, refreshRewards,
     }}>
       {children}
     </CampaignContext.Provider>

@@ -24,7 +24,7 @@ const LandingPage = () => {
       return;
     }
     if (!planName.trim()) {
-      toast.error('Enter your plan name.');
+      toast.error('Enter your full name.');
       return;
     }
 
@@ -137,12 +137,12 @@ const LandingPage = () => {
           </div>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-[0.25em] text-gold/80 font-sans mb-2">Plan name</p>
+          <p className="text-[10px] uppercase tracking-[0.25em] text-gold/80 font-sans mb-2">Name</p>
           <input
             type="text"
             value={planName}
             onChange={(e) => setPlanName(e.target.value)}
-            placeholder="Enter your plan name"
+            placeholder="Your full name"
             className="w-full bg-transparent border-b border-border py-3 text-cream font-sans text-sm tracking-wide placeholder:text-muted-foreground/40 focus:outline-none focus:border-gold transition-colors"
           />
         </div>

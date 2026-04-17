@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { motion } from 'framer-motion';
 import { Gift } from 'lucide-react';
 import { toast } from 'sonner';
@@ -26,9 +27,12 @@ function pickByPossibility(list: Reward[]): Reward {
 }
 
 const SpinWheel: React.FC = () => {
-  const { rewards, userData, setSpinResult, setHasSpun, setStep, setSubmissionId, wheelImageSize } = useCampaign();
+  const { rewards, userData, setSpinResult, setHasSpun, setStep, setSubmissionId, wheelImageSize, refreshRewards } =
+    useCampaign();
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
+  /** Locked list for the current spin so segments match the server-side in-stock pool. */
+  const [spinDisplayRewards, setSpinDisplayRewards] = useState<Reward[] | null>(null);
   const [brokenImages, setBrokenImages] = useState<Record<string, true>>({});
   const wheelRef = useRef<HTMLDivElement>(null);
 
@@ -37,10 +41,18 @@ const SpinWheel: React.FC = () => {
     [rewards],
   );
 
-  const segmentAngle = activeRewards.length ? 360 / activeRewards.length : 0;
+  const displayRewards = spinDisplayRewards ?? activeRewards;
+
+  useEffect(() => {
+    void refreshRewards().catch(() => {
+      /* initial load may fail silently; spin will retry */
+    });
+  }, [refreshRewards]);
+
+  const segmentAngle = displayRewards.length ? 360 / displayRewards.length : 0;
 
   const handleSpin = async () => {
-    if (isSpinning || activeRewards.length === 0) return;
+    if (isSpinning) return;
 
     const code = normalizeCouponInput(userData.couponCode || '');
     const phoneN = userData.phone?.replace(/\D/g, '');
@@ -64,11 +76,30 @@ const SpinWheel: React.FC = () => {
       return;
     }
 
+    let pool: Reward[];
+    try {
+      const fresh = await refreshRewards();
+      pool = fresh.filter((r) => r.enabled && r.stock > 0);
+    } catch {
+      toast.error('Could not load prizes. Please try again.');
+      return;
+    }
+
+    if (pool.length === 0) {
+      toast.error('All prizes are out of stock. Please try again later.');
+      return;
+    }
+
+    flushSync(() => {
+      setSpinDisplayRewards(pool);
+    });
+
     setIsSpinning(true);
 
-    const winner = pickByPossibility(activeRewards);
-    const winnerIndex = activeRewards.findIndex((r) => r.id === winner.id);
-    const targetSegmentCenter = winnerIndex * segmentAngle + segmentAngle / 2;
+    const winner = pickByPossibility(pool);
+    const winnerIndex = pool.findIndex((r) => r.id === winner.id);
+    const segAngle = 360 / pool.length;
+    const targetSegmentCenter = winnerIndex * segAngle + segAngle / 2;
     const fullRotations = 5 + Math.floor(Math.random() * 3);
     const finalRotation = rotation + fullRotations * 360 + (360 - targetSegmentCenter);
 
@@ -87,16 +118,22 @@ const SpinWheel: React.FC = () => {
       } catch (e) {
         console.error(e);
         const msg =
-          e instanceof ApiError && (e.status === 409 || e.status === 410)
-            ? e.message
-            : 'Could not complete your spin. Please try again.';
+          e instanceof ApiError && e.status === 400
+            ? e.message || 'That prize just ran out. Please spin again.'
+            : e instanceof ApiError && (e.status === 409 || e.status === 410)
+              ? e.message
+              : 'Could not complete your spin. Please try again.';
         toast.error(msg);
+        setSpinDisplayRewards(null);
+        void refreshRewards().catch(() => {});
         setIsSpinning(false);
         return;
       }
 
       setSubmissionId(row.id);
       setIsSpinning(false);
+      setSpinDisplayRewards(null);
+      void refreshRewards().catch(() => {});
       setSpinResult(winner);
       setHasSpun(true);
       window.setTimeout(() => setStep('reward'), 800);
@@ -129,7 +166,7 @@ const SpinWheel: React.FC = () => {
         >
           <svg width={wheelSize} height={wheelSize} viewBox={`0 0 ${wheelSize} ${wheelSize}`}>
             <defs>
-              {activeRewards.map((reward, i) => {
+              {displayRewards.map((reward, i) => {
                 const startDeg = i * segmentAngle;
                 const endDeg = (i + 1) * segmentAngle;
                 const segDeg = segmentAngle;
@@ -149,7 +186,7 @@ const SpinWheel: React.FC = () => {
               })}
             </defs>
 
-            {activeRewards.map((reward, i) => {
+            {displayRewards.map((reward, i) => {
               const startDeg = i * segmentAngle;
               const endDeg = (i + 1) * segmentAngle;
               const segDeg = segmentAngle;
@@ -255,7 +292,7 @@ const SpinWheel: React.FC = () => {
         <button
           type="button"
           onClick={handleSpin}
-          disabled={isSpinning}
+          disabled={isSpinning || displayRewards.length === 0}
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full gradient-gold flex items-center justify-center text-primary-foreground text-xs font-sans font-semibold tracking-wider uppercase disabled:opacity-50 transition-transform hover:scale-105 active:scale-95 z-20"
         >
           {isSpinning ? '...' : 'Spin'}

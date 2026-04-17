@@ -28,7 +28,7 @@ const UserFormPage = () => {
         </div>
 
         <div className="rounded-sm border border-border/60 bg-secondary/20 px-3 py-2.5 text-xs space-y-1">
-          <p className="text-muted-foreground font-sans">Plan name: <span className="text-cream">{userData.planName || '—'}</span></p>
+          <p className="text-muted-foreground font-sans">Name: <span className="text-cream">{userData.planName || '—'}</span></p>
           <p className="text-muted-foreground font-sans">Phone: <span className="text-cream font-mono">+91 {userData.phone || '—'}</span></p>
           <p className="text-muted-foreground font-sans">Coupon: <span className="text-gold font-mono">{userData.couponCode || '—'}</span></p>
         </div>

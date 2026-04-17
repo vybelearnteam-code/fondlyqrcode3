@@ -548,7 +548,7 @@ const AdminPanel = () => {
   };
 
   const exportCSV = () => {
-    const headers = ['Plan Name', 'Phone', 'Coupon', 'PIN', 'Verified', 'Reward', 'Date'];
+    const headers = ['Name', 'Phone', 'Coupon', 'PIN', 'Verified', 'Reward', 'Date'];
     const rows = submissions.map(s => [
       s.name || '', s.phone, s.coupon_code || '', s.pin_code || '', s.otp_verified ? 'Yes' : 'No', s.reward_title || '',
       new Date(s.created_at).toLocaleString(),
@@ -980,7 +980,7 @@ const AdminPanel = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Plan Name</TableHead>
+                      <TableHead>Name</TableHead>
                       <TableHead>Phone</TableHead>
                       <TableHead>Coupon</TableHead>
                       <TableHead>PIN</TableHead>

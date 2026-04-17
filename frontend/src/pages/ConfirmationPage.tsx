@@ -15,7 +15,7 @@ const ConfirmationPage = () => {
     const text = [
       intro,
       `Reward: ${spinResult?.title ?? '—'}.`,
-      `Plan name: ${userData.planName || '—'}.`,
+      `Name: ${userData.planName || '—'}.`,
       `Coupon: ${userData.couponCode || '—'}.`,
       `Phone: +91 ${userData.phone || '—'}.`,
     ].join(' ');
@@ -36,7 +36,7 @@ const ConfirmationPage = () => {
         Your reward has been locked in successfully.
       </motion.p>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1, duration: 0.6 }} className="bg-secondary/50 border border-border rounded-sm p-6 w-full max-w-xs mb-10 space-y-2">
-        <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Plan name</span><span className="text-cream text-right">{userData.planName || '—'}</span></div>
+        <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Name</span><span className="text-cream text-right">{userData.planName || '—'}</span></div>
         <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Phone</span><span className="text-cream font-mono">+91 {userData.phone}</span></div>
         <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Coupon</span><span className="text-gold font-mono text-right">{userData.couponCode}</span></div>
         <div className="flex justify-between text-xs font-sans gap-2"><span className="text-muted-foreground shrink-0">Reward</span><span className="text-gold text-right">{spinResult?.title}</span></div>
