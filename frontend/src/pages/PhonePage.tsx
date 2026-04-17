@@ -17,7 +17,7 @@ const PhonePage = () => {
     try {
       const { exists } = await phoneHasSubmission(phone);
       if (exists) {
-        toast.error('This number has already been used.');
+        toast.error('This number is already registered. Each mobile number can be used only once.');
         setLoading(false);
         return;
       }

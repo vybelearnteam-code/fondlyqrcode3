@@ -603,7 +603,9 @@ app.post('/api/user-submissions', async (req, res) => {
       });
     } catch (e) {
       if (e && typeof e === 'object' && 'code' in e && e.code === 11000) {
-        return res.status(409).json({ error: 'Duplicate phone' });
+        return res.status(409).json({
+          error: 'This number is already registered. Each mobile number can be used only once.',
+        });
       }
       throw e;
     }
@@ -741,7 +743,15 @@ app.post('/api/spin/complete', async (req, res) => {
           );
         } catch (e) {
           if (e && typeof e === 'object' && 'code' in e && e.code === 11000) {
-            throw Object.assign(new Error('Coupon or phone already used'), { code: 'DUP' });
+            const kp = e.keyPattern && typeof e.keyPattern === 'object' ? e.keyPattern : {};
+            const kv = e.keyValue && typeof e.keyValue === 'object' ? e.keyValue : {};
+            if (kp.phone || 'phone' in kv) {
+              throw Object.assign(new Error('Phone already used'), { code: 'PHONE' });
+            }
+            if (kp.coupon_code || 'coupon_code' in kv) {
+              throw Object.assign(new Error('Coupon already used'), { code: 'DUP_COUPON' });
+            }
+            throw Object.assign(new Error('Duplicate submission'), { code: 'DUP' });
           }
           throw e;
         }
@@ -764,9 +774,15 @@ app.post('/api/spin/complete', async (req, res) => {
     }
   } catch (e) {
     const code = e && typeof e === 'object' && 'code' in e ? e.code : '';
-    if (code === 'DUP') return res.status(409).json({ error: 'This coupon was already used.' });
+    if (code === 'DUP_COUPON' || code === 'DUP') {
+      return res.status(409).json({ error: 'This coupon was already used.' });
+    }
     if (code === 'COUPON') return res.status(400).json({ error: 'This coupon is no longer valid for a spin.' });
-    if (code === 'PHONE') return res.status(409).json({ error: 'This phone number has already been used.' });
+    if (code === 'PHONE') {
+      return res.status(409).json({
+        error: 'This number is already registered. Each mobile number can be used only once.',
+      });
+    }
     if (code === 'REWARD') return res.status(400).json({ error: 'This reward is no longer available.' });
     console.error(e);
     res.status(500).json({ error: e instanceof Error ? e.message : 'Server error' });
